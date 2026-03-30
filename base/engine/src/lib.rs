@@ -78,6 +78,7 @@
 #[macro_use]
 mod exn;
 
+pub mod composing_session;
 pub mod conversion;
 pub mod dictionary;
 pub mod editor;
