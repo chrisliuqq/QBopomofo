@@ -79,23 +79,12 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         HStack(spacing: 0) {
-                            if !engine.composingBuffer.isEmpty {
-                                Text(engine.composingBuffer)
+                            if !engine.preEditDisplay.isEmpty {
+                                Text(engine.preEditDisplay)
                                     .font(.system(size: 20))
                                     .underline()
                                     .foregroundStyle(.primary)
-                            }
-                            if !engine.bopomofoReading.isEmpty {
-                                Text(engine.bopomofoReading)
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(.blue)
-                            }
-                            if !engine.inlineEnglishBuffer.isEmpty {
-                                Text(engine.inlineEnglishBuffer)
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(.orange)
-                            }
-                            if engine.composingBuffer.isEmpty && engine.bopomofoReading.isEmpty && engine.inlineEnglishBuffer.isEmpty {
+                            } else {
                                 Text("（等待輸入）")
                                     .font(.system(size: 16))
                                     .foregroundStyle(.tertiary)

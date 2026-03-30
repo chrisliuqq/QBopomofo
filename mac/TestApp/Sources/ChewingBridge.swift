@@ -379,8 +379,30 @@ final class ChewingBridge: ObservableObject {
             composingBuffer = ""
         }
 
-        // Pre-edit display (Chinese composing + bopomofo reading + inline English)
-        preEditDisplay = composingBuffer + bopomofoReading + inlineEnglishBuffer
+        // Pre-edit display: replay segments + current unsaved content
+        // Segments contain already-recorded Chinese snapshots and English text.
+        // Current chewing buffer may have grown since last snapshot.
+        var display = ""
+        let alreadySnapshotted = mixedSegments
+            .compactMap { if case .chinese(let t) = $0 { return t } else { return nil } }
+            .joined()
+        for segment in mixedSegments {
+            switch segment {
+            case .chinese(let text):
+                display += text
+            case .english(let text):
+                display += text
+            }
+        }
+        // Append the part of composingBuffer that's new since last snapshot
+        if composingBuffer.hasPrefix(alreadySnapshotted) {
+            display += String(composingBuffer.dropFirst(alreadySnapshotted.count))
+        } else if !composingBuffer.isEmpty {
+            display += composingBuffer
+        }
+        display += bopomofoReading
+        display += inlineEnglishBuffer
+        preEditDisplay = display
 
         // Candidates
         let totalPage = chewing_cand_TotalPage(ctx)
