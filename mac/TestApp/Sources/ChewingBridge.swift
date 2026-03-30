@@ -85,8 +85,35 @@ final class ChewingBridge: ObservableObject {
         guard let ctx = ctx else { return }
         chewing_Reset(ctx)
         committedText = ""
+        inlineEnglishBuffer = ""
+        isEnglishMode = false
         updateState()
         log("Engine reset")
+    }
+
+    /// Commit all pending text (composing buffer + inline English)
+    private func commitAll() {
+        guard let ctx = ctx else { return }
+
+        // Commit chewing composing buffer first
+        let bufLen = chewing_buffer_Len(ctx)
+        if bufLen > 0 {
+            chewing_handle_Enter(ctx)
+            if chewing_commit_Check(ctx) != 0 {
+                if let commitStr = chewing_commit_String(ctx) {
+                    committedText += String(cString: commitStr)
+                    chewing_free(commitStr)
+                }
+            }
+        }
+
+        // Then commit inline English
+        if !inlineEnglishBuffer.isEmpty {
+            committedText += inlineEnglishBuffer
+            inlineEnglishBuffer = ""
+        }
+
+        updateState()
     }
 
     // MARK: - Key Handling
@@ -132,30 +159,53 @@ final class ChewingBridge: ObservableObject {
     private var shiftHeldDown = false
     private var shiftTypedWhileHeld = false
     private var wasInChineseBeforeShift = true
+    /// English text typed inline during composing (mixed into 組字區)
+    @Published var inlineEnglishBuffer: String = ""
 
     /// Process a key event. Returns true if the key was handled.
     func handleKey(keyCode: UInt16, characters: String, shift: Bool = false) -> Bool {
         guard let ctx = ctx else { return false }
 
-        // If Shift is held and we're in SmartToggle, type English temporarily
+        // If Shift is held and we're in SmartToggle, type English into composing buffer
         if shift && shiftHeldDown && shiftBehavior == .smartToggle {
             shiftTypedWhileHeld = true
-            // In temporary English mode — output the character directly
             if let ch = characters.first, ch.isASCII {
-                committedText += String(ch)
-                isEnglishMode = true  // Show as English mode while held
-                log("Key (temp English): '\(ch)'")
+                inlineEnglishBuffer += String(ch)
+                isEnglishMode = true
+                log("Key (temp English → 組字區): '\(ch)'")
+                updateState()
                 return true
             }
         }
 
-        // English mode — pass through as direct text
+        // English mode (toggled) — type English into composing buffer
         if isEnglishMode {
-            if let ch = characters.first, ch.isASCII, !ch.isNewline {
-                committedText += String(ch)
-                log("Key (English): '\(ch)'")
+            if keyCode == 36 { // Enter — commit everything
+                commitAll()
+                log("Key: Enter (commit all)")
                 return true
             }
+            if keyCode == 51 { // Backspace
+                if !inlineEnglishBuffer.isEmpty {
+                    inlineEnglishBuffer.removeLast()
+                    log("Key: Backspace (English buffer)")
+                    updateState()
+                    return true
+                }
+            }
+            if let ch = characters.first, ch.isASCII, !ch.isNewline {
+                inlineEnglishBuffer += String(ch)
+                log("Key (English → 組字區): '\(ch)'")
+                updateState()
+                return true
+            }
+        }
+
+        // If there's pending English text and user types Chinese, commit English first
+        if !inlineEnglishBuffer.isEmpty {
+            committedText += inlineEnglishBuffer
+            log("Auto-commit English buffer: \(inlineEnglishBuffer)")
+            inlineEnglishBuffer = ""
         }
 
         // Chinese mode — send to chewing engine
@@ -269,8 +319,8 @@ final class ChewingBridge: ObservableObject {
             composingBuffer = ""
         }
 
-        // Pre-edit display
-        preEditDisplay = composingBuffer + bopomofoReading
+        // Pre-edit display (Chinese composing + bopomofo reading + inline English)
+        preEditDisplay = composingBuffer + bopomofoReading + inlineEnglishBuffer
 
         // Candidates
         let totalPage = chewing_cand_TotalPage(ctx)

@@ -73,7 +73,7 @@ struct ContentView: View {
                             .border(.separator)
                     }
 
-                    // Pre-edit display (composing + bopomofo)
+                    // Pre-edit display (composing + bopomofo + inline English)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("組字區")
                             .font(.caption)
@@ -90,7 +90,12 @@ struct ContentView: View {
                                     .font(.system(size: 20))
                                     .foregroundStyle(.blue)
                             }
-                            if engine.composingBuffer.isEmpty && engine.bopomofoReading.isEmpty {
+                            if !engine.inlineEnglishBuffer.isEmpty {
+                                Text(engine.inlineEnglishBuffer)
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(.orange)
+                            }
+                            if engine.composingBuffer.isEmpty && engine.bopomofoReading.isEmpty && engine.inlineEnglishBuffer.isEmpty {
                                 Text("（等待輸入）")
                                     .font(.system(size: 16))
                                     .foregroundStyle(.tertiary)
