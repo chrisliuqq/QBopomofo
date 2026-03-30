@@ -180,6 +180,13 @@ final class ChewingBridge: ObservableObject {
 
         // English mode (toggled) — type English into composing buffer
         if isEnglishMode {
+            if keyCode == 53 { // Escape — cancel composing
+                inlineEnglishBuffer = ""
+                isEnglishMode = false
+                log("Key: Escape (取消英文組字)")
+                updateState()
+                return true
+            }
             if keyCode == 36 { // Enter — commit everything
                 commitAll()
                 log("Key: Enter (commit all)")
@@ -239,7 +246,9 @@ final class ChewingBridge: ObservableObject {
             return true
         case 53: // Escape
             chewing_handle_Esc(ctx)
-            log("Key: Escape")
+            inlineEnglishBuffer = ""
+            isEnglishMode = false
+            log("Key: Escape (清除組字區)")
             return true
         case 49: // Space
             chewing_handle_Space(ctx)
