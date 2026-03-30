@@ -179,6 +179,21 @@ final class ChewingBridge: ObservableObject {
                     return true
                 }
             }
+            // Space in English mode
+            if keyCode == 49 {
+                let chinBuf = getChewingBufferString()
+                let directCommit = chinBuf.withCString { cStr in
+                    qb_composing_type_english(session, UInt8(Character(" ").asciiValue!), cStr)
+                }
+                if directCommit != 0 {
+                    committedText += " "
+                    log("Key (English, direct): Space")
+                } else {
+                    log("Key (English → 組字區): Space")
+                }
+                updateState()
+                return true
+            }
             if let ch = characters.first, ch.isASCII, !ch.isNewline {
                 let chinBuf = getChewingBufferString()
                 let directCommit = chinBuf.withCString { cStr in
@@ -218,6 +233,13 @@ final class ChewingBridge: ObservableObject {
             isEnglishMode = false
             log("Key: Escape (清除組字區)")
             updateState()
+            return true
+        }
+
+        // Chinese mode: space with no buffer → output space directly
+        if keyCode == 49 && chewing_buffer_Len(ctx) == 0 && chewing_bopomofo_Check(ctx) == 0 {
+            committedText += " "
+            log("Key: Space (direct, no buffer)")
             return true
         }
 

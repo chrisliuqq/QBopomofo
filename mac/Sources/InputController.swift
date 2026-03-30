@@ -133,6 +133,19 @@ class QBopomofoInputController: IMKInputController {
                     return true
                 }
             }
+            // Space in English mode
+            if keyCode == 49 {
+                let chinBuf = getChewingBuffer(ctx)
+                let directCommit = chinBuf.withCString { cStr in
+                    qb_composing_type_english(session, UInt8(Character(" ").asciiValue!), cStr)
+                }
+                if directCommit != 0 {
+                    client.insertText(" ", replacementRange: NSRange(location: NSNotFound, length: 0))
+                } else {
+                    updateClientDisplay(ctx: ctx, session: session, client: client)
+                }
+                return true
+            }
             if let ch = chars.first, ch.isASCII, !ch.isNewline {
                 let chinBuf = getChewingBuffer(ctx)
                 let directCommit = chinBuf.withCString { cStr in
@@ -164,6 +177,12 @@ class QBopomofoInputController: IMKInputController {
             qb_composing_clear(session)
             chewing_handle_Esc(ctx)
             updateClientDisplay(ctx: ctx, session: session, client: client)
+            return true
+        }
+
+        // Chinese mode: space with no buffer → output space directly
+        if keyCode == 49 && chewing_buffer_Len(ctx) == 0 && chewing_bopomofo_Check(ctx) == 0 {
+            client.insertText(" ", replacementRange: NSRange(location: NSNotFound, length: 0))
             return true
         }
 
