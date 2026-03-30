@@ -156,6 +156,12 @@ struct ContentView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
+                        Button("複製日誌") {
+                            let text = engine.debugLog.joined(separator: "\n")
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(text, forType: .string)
+                        }
+                        .font(.caption)
                         Button("清除日誌") {
                             engine.debugLog.removeAll()
                         }
@@ -164,24 +170,16 @@ struct ContentView: View {
                     .padding(.top, 12)
                     .padding(.horizontal, 8)
 
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 2) {
-                                ForEach(Array(engine.debugLog.enumerated()), id: \.offset) { index, entry in
-                                    Text(entry)
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                        .id(index)
-                                }
-                            }
+                    let logText = engine.debugLog.joined(separator: "\n")
+                    ScrollView {
+                        Text(logText)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
-                        }
-                        .onChange(of: engine.debugLog.count) { _, _ in
-                            if let last = engine.debugLog.indices.last {
-                                proxy.scrollTo(last, anchor: .bottom)
-                            }
-                        }
                     }
+                    .defaultScrollAnchor(.bottom)
                     .background(.background)
                     .border(.separator)
                     .padding(.horizontal, 8)
