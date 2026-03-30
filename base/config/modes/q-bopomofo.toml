@@ -14,5 +14,10 @@ engine = "chewing"
 system = ["word.dat", "tsi.dat"]
 custom = ["phrases.csv"]
 
-[rules]
-boost_file = "custom-data/phrases.csv"
+[preferences]
+shift_behavior = "toggle_chinese_english"   # Shift 切換中英
+caps_lock_behavior = "none"                 # Caps Lock 不處理
+candidates_per_page = 9
+space_as_selection = true
+esc_clear_all = true
+auto_learn = true

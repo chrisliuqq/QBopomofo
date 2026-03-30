@@ -48,15 +48,69 @@ pub enum ConversionKind {
     FuzzyChewing,
 }
 
+/// What action Shift key performs in this mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShiftBehavior {
+    /// Shift does nothing special (default chewing behavior)
+    None,
+    /// Shift toggles between Chinese and English input
+    ToggleChineseEnglish,
+    /// Shift enters temporary English mode (hold to type English, release to return)
+    TemporaryEnglish,
+}
+
+/// What action Caps Lock performs in this mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapsLockBehavior {
+    /// Caps Lock does nothing special
+    None,
+    /// Caps Lock toggles between Chinese and English input
+    ToggleChineseEnglish,
+    /// Caps Lock toggles between full-width and half-width characters
+    ToggleFullHalfWidth,
+}
+
+/// Per-mode preferences that control input behavior.
+/// Each TypingMode can have its own preference set.
+#[derive(Debug, Clone)]
+pub struct ModePreferences {
+    /// What Shift key does
+    pub shift_behavior: ShiftBehavior,
+    /// What Caps Lock does
+    pub caps_lock_behavior: CapsLockBehavior,
+    /// Number of candidates per page (1-10)
+    pub candidates_per_page: u8,
+    /// Whether Space selects the first candidate
+    pub space_as_selection: bool,
+    /// Whether Esc clears the entire buffer
+    pub esc_clear_all: bool,
+    /// Whether to auto-learn user phrases
+    pub auto_learn: bool,
+}
+
+impl Default for ModePreferences {
+    fn default() -> Self {
+        Self {
+            shift_behavior: ShiftBehavior::ToggleChineseEnglish,
+            caps_lock_behavior: CapsLockBehavior::None,
+            candidates_per_page: 9,
+            space_as_selection: true,
+            esc_clear_all: true,
+            auto_learn: true,
+        }
+    }
+}
+
 /// A complete typing mode definition.
 ///
-/// Combines layout + conversion engine + metadata.
+/// Combines layout + conversion engine + preferences + metadata.
 /// Dictionaries are NOT part of the mode — they are shared across all modes.
 #[derive(Debug, Clone)]
 pub struct TypingMode {
     pub info: TypingModeInfo,
     pub layout: KeyboardLayout,
     pub conversion: ConversionKind,
+    pub preferences: ModePreferences,
 }
 
 impl TypingMode {
@@ -72,6 +126,11 @@ impl TypingMode {
             },
             layout: KeyboardLayout::Standard,
             conversion: ConversionKind::Chewing,
+            preferences: ModePreferences {
+                shift_behavior: ShiftBehavior::ToggleChineseEnglish,
+                caps_lock_behavior: CapsLockBehavior::None,
+                ..Default::default()
+            },
         }
     }
 
@@ -85,6 +144,7 @@ impl TypingMode {
             },
             layout: KeyboardLayout::Standard,
             conversion: ConversionKind::Chewing,
+            preferences: ModePreferences::default(),
         }
     }
 
@@ -98,6 +158,7 @@ impl TypingMode {
             },
             layout: KeyboardLayout::Standard,
             conversion: ConversionKind::FuzzyChewing,
+            preferences: ModePreferences::default(),
         }
     }
 
@@ -111,6 +172,7 @@ impl TypingMode {
             },
             layout: KeyboardLayout::Hsu,
             conversion: ConversionKind::Chewing,
+            preferences: ModePreferences::default(),
         }
     }
 
