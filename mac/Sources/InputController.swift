@@ -99,8 +99,10 @@ class QBopomofoInputController: IMKInputController {
         // Shift held + typing → English
         if shift && qb_composing_is_shift_held(session) != 0 {
             if let ch = chars.first, ch.isASCII {
-                let hasChinese: Int32 = chewing_buffer_Len(ctx) > 0 ? 1 : 0
-                let directCommit = qb_composing_type_english(session, UInt8(ch.asciiValue ?? 0), hasChinese)
+                let chinBuf = getChewingBuffer(ctx)
+                let directCommit = chinBuf.withCString { cStr in
+                    qb_composing_type_english(session, UInt8(ch.asciiValue ?? 0), cStr)
+                }
                 if directCommit != 0 {
                     client.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0))
                 } else {
@@ -129,8 +131,10 @@ class QBopomofoInputController: IMKInputController {
                 }
             }
             if let ch = chars.first, ch.isASCII, !ch.isNewline {
-                let hasChinese: Int32 = chewing_buffer_Len(ctx) > 0 ? 1 : 0
-                let directCommit = qb_composing_type_english(session, UInt8(ch.asciiValue ?? 0), hasChinese)
+                let chinBuf = getChewingBuffer(ctx)
+                let directCommit = chinBuf.withCString { cStr in
+                    qb_composing_type_english(session, UInt8(ch.asciiValue ?? 0), cStr)
+                }
                 if directCommit != 0 {
                     client.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0))
                 } else {

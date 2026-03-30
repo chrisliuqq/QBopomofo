@@ -79,14 +79,19 @@ pub extern "C" fn qb_composing_is_shift_held(session: *const QBComposingSession)
 }
 
 /// Type an English character.
-/// `has_chinese_buffer`: 1 if chewing has composing text, 0 if empty.
+/// `chinese_buffer`: current chewing buffer content (UTF-8). Pass NULL or "" if empty.
 /// Returns 1 if caller should directly commit this character (no Chinese context),
 /// Returns 0 if character was added to mixed composing buffer.
 #[unsafe(no_mangle)]
-pub extern "C" fn qb_composing_type_english(session: *mut QBComposingSession, ch: u8, has_chinese_buffer: i32) -> i32 {
+pub extern "C" fn qb_composing_type_english(session: *mut QBComposingSession, ch: u8, chinese_buffer: *const c_char) -> i32 {
     if session.is_null() { return 1; }
     let s = unsafe { &mut *session };
-    let direct = s.inner.type_english(ch as char, has_chinese_buffer != 0);
+    let buf = if chinese_buffer.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(chinese_buffer) }.to_str().unwrap_or("")
+    };
+    let direct = s.inner.type_english(ch as char, buf);
     if direct { 1 } else { 0 }
 }
 

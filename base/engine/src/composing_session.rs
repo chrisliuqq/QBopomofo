@@ -125,21 +125,34 @@ impl ComposingSession {
 
     /// Type an English character.
     ///
-    /// If `has_chinese_buffer` is true, the character goes into the mixed
-    /// composing buffer (segment tracking). If false, returns `true` to
-    /// indicate the caller should directly commit this character.
-    pub fn type_english(&mut self, ch: char, has_chinese_buffer: bool) -> bool {
+    /// `chinese_buffer` is the current chewing composing buffer content.
+    /// If empty and no segments exist, returns `true` to indicate the caller
+    /// should directly commit this character (no Chinese context).
+    pub fn type_english(&mut self, ch: char, chinese_buffer: &str) -> bool {
         if self.shift_held {
             self.shift_typed_while_held = true;
             self.is_english = true;
         }
 
+        let has_chinese = !chinese_buffer.is_empty();
+
         // No Chinese composing — direct commit, skip segment tracking
-        if !has_chinese_buffer && self.segments.is_empty() {
+        if !has_chinese && self.segments.is_empty() {
             return true; // caller should commit directly
         }
 
-        // Has Chinese context — add to mixed buffer
+        // First English char after Chinese — snapshot Chinese buffer first
+        if has_chinese && self.english_buffer.is_empty() {
+            // Check if Chinese was already snapshotted
+            let already_snapshotted: String = self.segments.iter()
+                .filter_map(|s| if let Segment::Chinese(t) = s { Some(t.as_str()) } else { None })
+                .collect();
+            if chinese_buffer != already_snapshotted {
+                self.segments.push(Segment::Chinese(chinese_buffer.to_string()));
+            }
+        }
+
+        // Add to mixed buffer
         self.english_buffer.push(ch);
         false // handled internally, don't direct commit
     }
