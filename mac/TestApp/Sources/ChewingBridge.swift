@@ -258,7 +258,7 @@ final class ChewingBridge: ObservableObject {
         // Both Chinese and English will be committed together on Enter.
 
         // Enter with mixed content — use commitAll to preserve order
-        if keyCode == 36 && !inlineEnglishBuffer.isEmpty {
+        if keyCode == 36 && (!inlineEnglishBuffer.isEmpty || !mixedSegments.isEmpty) {
             commitAll()
             log("Key: Enter (commit all: Chinese + English)")
             return true
