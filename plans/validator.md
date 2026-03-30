@@ -151,4 +151,4 @@
 | B-005 | Enter 未觸發 commitAll（mixedSegments 檢查遺漏） | 2026-03-30 | `73f8f6e` |
 | B-006 | 組字區未顯示 segment 中的英文 | 2026-03-30 | `66dfc05` |
 | B-007 | 按住 Shift 打英文順序錯誤（未 snapshot 中文） | 2026-03-30 | `d2ff455` |
-| B-008 | Backspace 無法刪除已存入 segment 的英文 | 2026-03-30 | 待 commit |
+| B-008 | Backspace 無法刪除已存入 segment 的英文，且刪完英文後 Chinese snapshot 未清除導致重複顯示 | 2026-03-30 | 見下方 commit |

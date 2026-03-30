@@ -159,6 +159,10 @@ impl ComposingSession {
 
     /// Delete the last English character from the current buffer or from
     /// the last English segment. Returns true if something was deleted.
+    ///
+    /// When the last English segment is fully deleted, also removes
+    /// the preceding Chinese snapshot segment (since the chewing engine
+    /// buffer is the source of truth for Chinese text).
     pub fn backspace_english(&mut self) -> bool {
         // First try the current inline buffer
         if self.english_buffer.pop().is_some() {
@@ -169,6 +173,11 @@ impl ComposingSession {
             text.pop();
             if text.is_empty() {
                 self.segments.pop();
+                // Also remove the preceding Chinese snapshot — the chewing
+                // engine buffer is the source of truth now
+                while let Some(Segment::Chinese(_)) = self.segments.last() {
+                    self.segments.pop();
+                }
             }
             return true;
         }
