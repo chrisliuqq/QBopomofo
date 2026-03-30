@@ -1,0 +1,23 @@
+[package]
+name = "qbopomofo-win"
+description = "QBopomofo Windows input method (TSF Text Service)"
+license = "LGPL-2.1-or-later"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chewing = { path = "../base/engine" }
+log = "0.4"
+
+# Windows-specific dependencies are added when building on Windows.
+# The `windows` crate version and features will be configured when
+# the Windows build environment is set up.
+# See: https://github.com/chewing/windows-chewing-tsf for reference.
+#
+# [target.'cfg(windows)'.dependencies]
+# windows = { version = "...", features = [...] }
+# windows-implement = "..."
+
+[lib]
+name = "qbopomofo_tip"
+path = "src/lib.rs"
