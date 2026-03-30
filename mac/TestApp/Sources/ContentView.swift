@@ -13,11 +13,21 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title
+            // Title + Mode Picker
             HStack {
                 Text("QBopomofo 模擬輸入框")
                     .font(.headline)
                 Spacer()
+                Picker("模式", selection: Binding(
+                    get: { engine.currentMode },
+                    set: { engine.switchMode($0) }
+                )) {
+                    ForEach(TypingModeSwift.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
                 Button("清除") { engine.reset() }
                     .keyboardShortcut("r", modifiers: .command)
             }

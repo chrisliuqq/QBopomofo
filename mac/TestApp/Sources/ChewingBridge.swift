@@ -24,6 +24,8 @@ final class ChewingBridge: ObservableObject {
     @Published var committedText: String = ""
     /// Log of engine events for debugging
     @Published var debugLog: [String] = []
+    /// Current typing mode
+    @Published var currentMode: TypingModeSwift = .standardBopomofo
 
     private var ctx: OpaquePointer?
 
@@ -229,6 +231,23 @@ final class ChewingBridge: ObservableObject {
         }
     }
 
+    // MARK: - TypingMode Switching
+
+    func switchMode(_ mode: TypingModeSwift) {
+        guard let ctx = ctx else { return }
+
+        // Switch keyboard layout
+        chewing_set_KBType(ctx, mode.kbType)
+
+        // Switch conversion engine
+        chewing_config_set_int(ctx, "chewing.conversion_engine", mode.conversionEngine)
+
+        currentMode = mode
+        log("Mode switched to: \(mode.displayName)")
+    }
+
+    // MARK: - Helpers
+
     private func findProjectRoot() -> String {
         // Walk up from executable to find project root
         var url = URL(fileURLWithPath: #filePath)
@@ -240,5 +259,51 @@ final class ChewingBridge: ObservableObject {
         }
         // Fallback: assume we're somewhere in the project
         return FileManager.default.currentDirectoryPath
+    }
+}
+
+// MARK: - TypingMode Definition (Swift side)
+
+/// Mirrors the Rust TypingMode — bundles layout + conversion engine.
+/// KB type values match the C enum in chewing.h.
+enum TypingModeSwift: String, CaseIterable, Identifiable {
+    case standardBopomofo
+    case fuzzyBopomofo
+    case hsuBopomofo
+    case ibmBopomofo
+    case et26Bopomofo
+    case hanyuPinyin
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .standardBopomofo: return "標準注音"
+        case .fuzzyBopomofo: return "模糊注音"
+        case .hsuBopomofo: return "許氏注音"
+        case .ibmBopomofo: return "IBM 注音"
+        case .et26Bopomofo: return "倚天26鍵"
+        case .hanyuPinyin: return "漢語拼音"
+        }
+    }
+
+    /// Maps to KB enum in chewing.h (KB_DEFAULT=0, KB_HSU=1, etc.)
+    var kbType: Int32 {
+        switch self {
+        case .standardBopomofo: return 0  // KB_DEFAULT
+        case .fuzzyBopomofo: return 0     // KB_DEFAULT (layout same, engine differs)
+        case .hsuBopomofo: return 1       // KB_HSU
+        case .ibmBopomofo: return 2       // KB_IBM
+        case .et26Bopomofo: return 5      // KB_ET26
+        case .hanyuPinyin: return 9       // KB_HANYU_PINYIN
+        }
+    }
+
+    /// Maps to conversion engine constants in chewing.h
+    var conversionEngine: Int32 {
+        switch self {
+        case .fuzzyBopomofo: return 2  // FUZZY_CHEWING_CONVERSION_ENGINE
+        default: return 1              // CHEWING_CONVERSION_ENGINE
+        }
     }
 }
