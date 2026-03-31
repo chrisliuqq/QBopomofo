@@ -274,12 +274,12 @@ class QBopomofoInputController: IMKInputController {
                 let candCount = getCandidateCount(ctx)
                 selectedCandidateIndex = min(selectedCandidateIndex + 1, candCount - 1)
                 dbg("cand ↓ → \(selectedCandidateIndex)")
-                QBopomofoInputController.candidateWindow?.selectCandidate(selectedCandidateIndex)
+                highlightCandidate(at: selectedCandidateIndex)
                 return true
             case 126: // Up — previous candidate
                 selectedCandidateIndex = max(selectedCandidateIndex - 1, 0)
                 dbg("cand ↑ → \(selectedCandidateIndex)")
-                QBopomofoInputController.candidateWindow?.selectCandidate(selectedCandidateIndex)
+                highlightCandidate(at: selectedCandidateIndex)
                 return true
             case 124: // Right — next page
                 chewing_handle_Right(ctx)
@@ -421,6 +421,8 @@ class QBopomofoInputController: IMKInputController {
             if inCandMode {
                 candWin.update()
                 candWin.show(kIMKLocateCandidatesBelowHint)
+                // Highlight the current selection after update
+                highlightCandidate(at: selectedCandidateIndex)
             } else {
                 if candWin.isVisible() { candWin.hide() }
             }
@@ -523,6 +525,15 @@ class QBopomofoInputController: IMKInputController {
 
     private func inCandidateMode(_ ctx: OpaquePointer) -> Bool {
         chewing_cand_CheckDone(ctx) == 0 && chewing_cand_TotalPage(ctx) > 0
+    }
+
+    private func highlightCandidate(at lineNumber: Int) {
+        guard let candWin = QBopomofoInputController.candidateWindow else { return }
+        let identifier = candWin.candidateIdentifier(atLineNumber: lineNumber)
+        if identifier != NSNotFound {
+            candWin.selectCandidate(withIdentifier: identifier)
+            dbg("highlight line=\(lineNumber) id=\(identifier)")
+        }
     }
 
     private func getCandidateCount(_ ctx: OpaquePointer) -> Int {
