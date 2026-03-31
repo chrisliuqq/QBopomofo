@@ -22,8 +22,6 @@
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>LSBackgroundOnly</key>
-	<true/>
 	<key>InputMethodConnectionName</key>
 	<string>QBopomofo_Connection</string>
 	<key>InputMethodServerControllerClass</key>
@@ -52,6 +50,8 @@
 				<true/>
 				<key>tsInputModeDefaultStateKey</key>
 				<true/>
+				<key>tsInputModeLocalizedInputSourceName</key>
+				<string>Q注音</string>
 			</dict>
 		</dict>
 		<key>tsVisibleInputModeOrderedArrayKey</key>

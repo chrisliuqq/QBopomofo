@@ -99,23 +99,33 @@ struct ContentView: View {
                         }
                     }
 
-                    // Candidates
+                    // Candidates (vertical list)
                     if engine.showCandidates {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("候選字")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 8) {
-                                ForEach(Array(engine.candidates.prefix(9).enumerated()), id: \.offset) { index, candidate in
-                                    HStack(spacing: 2) {
-                                        Text("\(index + 1)")
-                                            .font(.caption)
+                            HStack {
+                                Text("候選字")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                if engine.candidateTotalPages > 1 {
+                                    Text("\(engine.candidateCurrentPage + 1)/\(engine.candidateTotalPages)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(Array(engine.candidates.prefix(engine.candidatesPerPage).enumerated()), id: \.offset) { index, candidate in
+                                    HStack(spacing: 4) {
+                                        Text("\(index + 1).")
+                                            .font(.system(size: 14, design: .monospaced))
                                             .foregroundStyle(.secondary)
+                                            .frame(width: 20, alignment: .trailing)
                                         Text(candidate)
                                             .font(.system(size: 18))
+                                        Spacer()
                                     }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
                                     .background(
                                         index == engine.selectedCandidateIndex
                                             ? Color.accentColor.opacity(0.2)
@@ -124,7 +134,7 @@ struct ContentView: View {
                                     .cornerRadius(4)
                                 }
                             }
-                            .padding(8)
+                            .padding(4)
                             .background(.background)
                             .border(.separator)
                         }

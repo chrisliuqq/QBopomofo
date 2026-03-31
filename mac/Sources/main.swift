@@ -11,16 +11,30 @@ if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "install" {
     exit(0)
 }
 
+// Must initialize NSApplication before creating IMKServer
+let app = NSApplication.shared
+
 // Initialize the input method server
-guard let bundleID = Bundle.main.bundleIdentifier,
-      let server = IMKServer(name: kConnectionName, bundleIdentifier: bundleID)
-else {
+guard let bundleID = Bundle.main.bundleIdentifier else {
+    NSLog("QBopomofo: Fatal error — no bundle identifier.")
+    exit(-1)
+}
+
+let server = IMKServer(name: kConnectionName, bundleIdentifier: bundleID)
+guard server != nil else {
     NSLog("QBopomofo: Fatal error — cannot initialize IMKServer.")
     exit(-1)
 }
 
-// Keep server reference alive
-_ = server
+NSLog("QBopomofo: Input method server started (build: %@, bundle: %@)", kBuildTimestamp, bundleID)
 
-NSLog("QBopomofo: Input method server started.")
-NSApp.run()
+// Write build info to debug log if enabled
+if ProcessInfo.processInfo.environment["QBOPOMOFO_DEBUG"] != nil {
+    let logPath = "/tmp/qbopomofo.log"
+    FileManager.default.createFile(atPath: logPath, contents: nil)
+    if let fh = FileHandle(forWritingAtPath: logPath) {
+        let msg = "[startup] QBopomofo build: \(kBuildTimestamp)\n"
+        fh.write(msg.data(using: .utf8)!)
+    }
+}
+app.run()

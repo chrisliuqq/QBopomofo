@@ -18,8 +18,17 @@ if [ ! -f "$DATA_DIR/tsi.dat" ]; then
     bash build.sh
 fi
 
-# Step 2: Build release binary
-echo "→ Building release binary..."
+# Step 2: Build Rust engine (capi)
+echo "→ Building Rust engine..."
+cd "$PROJECT_ROOT/base/engine/capi"
+cargo build --release 2>&1 | tail -3
+
+# Step 3: Write build timestamp
+BUILD_TS=$(date '+%Y-%m-%d %H:%M:%S')
+echo "let kBuildTimestamp = \"$BUILD_TS\"" > "$SCRIPT_DIR/Sources/BuildInfo.swift"
+
+# Step 4: Build release binary
+echo "→ Building Swift release binary..."
 cd "$SCRIPT_DIR"
 swift build -c release 2>&1
 
@@ -29,7 +38,7 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-# Step 3: Assemble .app bundle
+# Step 5: Assemble .app bundle
 echo "→ Assembling $APP_NAME.app..."
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
@@ -50,7 +59,7 @@ cp "$DATA_DIR/tsi.dat" "$APP_BUNDLE/Contents/Resources/"
 cp "$DATA_DIR/symbols.dat" "$APP_BUNDLE/Contents/Resources/"
 cp "$DATA_DIR/swkb.dat" "$APP_BUNDLE/Contents/Resources/"
 
-# Step 4: Ad-hoc code sign
+# Step 6: Ad-hoc code sign
 echo "→ Code signing..."
 codesign --deep --force --sign - "$APP_BUNDLE" 2>/dev/null || {
     echo "WARNING: Code signing failed (may need Xcode command line tools)"

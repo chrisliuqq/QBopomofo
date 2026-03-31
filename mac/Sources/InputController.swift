@@ -1,6 +1,25 @@
 import Cocoa
-import InputMethodKit
+@preconcurrency import InputMethodKit
 import CChewing
+
+/// Debug mode: writes to /tmp/qbopomofo.log when QBOPOMOFO_DEBUG env is set
+private let kDebugMode = ProcessInfo.processInfo.environment["QBOPOMOFO_DEBUG"] != nil
+nonisolated(unsafe) private var debugLogHandle: FileHandle? = {
+    guard kDebugMode else { return nil }
+    let path = "/tmp/qbopomofo.log"
+    FileManager.default.createFile(atPath: path, contents: nil)
+    return FileHandle(forWritingAtPath: path)
+}()
+
+private func dbg(_ msg: String) {
+    guard kDebugMode else { return }
+    let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+    let line = "[\(ts)] \(msg)\n"
+    if let data = line.data(using: .utf8) {
+        debugLogHandle?.seekToEndOfFile()
+        debugLogHandle?.write(data)
+    }
+}
 
 /// QBopomofo 的核心輸入控制器
 /// 負責處理按鍵事件、與 libchewing 引擎互動、管理輸入狀態
@@ -14,11 +33,18 @@ class QBopomofoInputController: IMKInputController {
     private var composingSession: OpaquePointer?
     private var isAutoFlushing: Bool = false
     private var currentClient: IMKTextInput?
+    private var selectedCandidateIndex: Int = 0
+    nonisolated(unsafe) private static var candidateWindow: IMKCandidates?
 
     // MARK: - Lifecycle
 
     override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
         super.init(server: server, delegate: delegate, client: inputClient)
+        if QBopomofoInputController.candidateWindow == nil {
+            // IMKCandidates init requires IMKServer; safe because we're always on main thread
+            nonisolated(unsafe) let srv = server!
+            QBopomofoInputController.candidateWindow = IMKCandidates(server: srv, panelType: kIMKSingleColumnScrollingCandidatePanel)
+        }
         initializeEngine()
     }
 
@@ -28,9 +54,9 @@ class QBopomofoInputController: IMKInputController {
     }
 
     private func initializeEngine() {
-        if let dictPath = Bundle.main.resourcePath {
-            setenv("CHEWING_PATH", dictPath, 1)
-        }
+        let dictPath = Bundle.main.resourcePath ?? ""
+        dbg("CHEWING_PATH = \(dictPath)")
+        setenv("CHEWING_PATH", dictPath, 1)
 
         chewingContext = chewing_new()
         guard chewingContext != nil else {
@@ -47,7 +73,7 @@ class QBopomofoInputController: IMKInputController {
         chewing_set_escCleanAllBuf(chewingContext, 1)
         chewing_set_autoShiftCur(chewingContext, 1)
 
-        NSLog("QBopomofo: Engine initialized")
+        dbg("Engine initialized")
     }
 
     // MARK: - IMKStateSetting
@@ -55,13 +81,13 @@ class QBopomofoInputController: IMKInputController {
     override func activateServer(_ sender: Any!) {
         currentClient = sender as? IMKTextInput
         if chewingContext == nil { initializeEngine() }
-        NSLog("QBopomofo: Server activated")
+        dbg("Server activated")
     }
 
     override func deactivateServer(_ sender: Any!) {
         commitComposition(sender)
         currentClient = nil
-        NSLog("QBopomofo: Server deactivated")
+        dbg("Server deactivated")
     }
 
     // MARK: - IMKServerInput
@@ -73,7 +99,10 @@ class QBopomofoInputController: IMKInputController {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event = event else { return false }
-        guard let ctx = chewingContext, let session = composingSession else { return false }
+        guard let ctx = chewingContext, let session = composingSession else {
+            dbg("handle called but engine not initialized")
+            return false
+        }
         guard let client = sender as? IMKTextInput else { return false }
 
         // Handle Shift key press/release (flagsChanged)
@@ -93,6 +122,8 @@ class QBopomofoInputController: IMKInputController {
         let chars = event.characters ?? ""
         let modifiers = event.modifierFlags
         let shift = modifiers.contains(.shift)
+
+        dbg("key=\(keyCode) chars=\(chars)")
 
         // Pass through Command/Control
         if modifiers.contains(.command) || modifiers.contains(.control) { return false }
@@ -180,6 +211,60 @@ class QBopomofoInputController: IMKInputController {
             return true
         }
 
+        // Candidate mode — intercept navigation keys
+        let inCandMode = chewing_cand_CheckDone(ctx) == 0 && chewing_cand_TotalPage(ctx) > 0
+        if inCandMode {
+            switch keyCode {
+            case 125: // Down — next candidate
+                let candCount = getCandidateCount(ctx)
+                selectedCandidateIndex = min(selectedCandidateIndex + 1, candCount - 1)
+                dbg("cand ↓ → \(selectedCandidateIndex)")
+                QBopomofoInputController.candidateWindow?.selectCandidate(selectedCandidateIndex)
+                return true
+            case 126: // Up — previous candidate
+                selectedCandidateIndex = max(selectedCandidateIndex - 1, 0)
+                dbg("cand ↑ → \(selectedCandidateIndex)")
+                QBopomofoInputController.candidateWindow?.selectCandidate(selectedCandidateIndex)
+                return true
+            case 124: // Right — next page
+                chewing_cand_list_next(ctx)
+                selectedCandidateIndex = 0
+                dbg("cand page →")
+                updateClientDisplay(ctx: ctx, session: session, client: client)
+                return true
+            case 123: // Left — previous page
+                chewing_cand_list_prev(ctx)
+                selectedCandidateIndex = 0
+                dbg("cand page ←")
+                updateClientDisplay(ctx: ctx, session: session, client: client)
+                return true
+            case 36, 49: // Enter or Space — select current candidate
+                let pageOffset = chewing_cand_CurrentPage(ctx) * 9
+                chewing_cand_choose_by_index(ctx, pageOffset + Int32(selectedCandidateIndex))
+                dbg("cand select: \(selectedCandidateIndex)")
+                selectedCandidateIndex = 0
+                updateClientDisplay(ctx: ctx, session: session, client: client)
+                return true
+            case 53: // Escape — close candidates
+                chewing_cand_close(ctx)
+                selectedCandidateIndex = 0
+                dbg("cand cancel")
+                updateClientDisplay(ctx: ctx, session: session, client: client)
+                return true
+            default:
+                // Number keys 1-9 select directly
+                if let ch = chars.first, ch >= "1" && ch <= "9" {
+                    let idx = Int(ch.asciiValue! - Character("1").asciiValue!)
+                    let pageOffset = chewing_cand_CurrentPage(ctx) * 9
+                    chewing_cand_choose_by_index(ctx, pageOffset + Int32(idx))
+                    dbg("cand select #\(idx + 1)")
+                    selectedCandidateIndex = 0
+                    updateClientDisplay(ctx: ctx, session: session, client: client)
+                    return true
+                }
+            }
+        }
+
         // Chinese mode: space with no buffer → output space directly
         if keyCode == 49 && chewing_buffer_Len(ctx) == 0 && chewing_bopomofo_Check(ctx) == 0 {
             client.insertText(" ", replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -204,7 +289,13 @@ class QBopomofoInputController: IMKInputController {
         case 117: chewing_handle_Del(ctx); return true
         case 123: chewing_handle_Left(ctx); return true
         case 124: chewing_handle_Right(ctx); return true
-        case 125: chewing_handle_Down(ctx); return true
+        case 125: // Down — open candidate window if buffer exists
+            if chewing_cand_TotalPage(ctx) > 0 {
+                chewing_handle_Down(ctx)
+            } else {
+                chewing_cand_open(ctx)
+            }
+            return true
         case 126: chewing_handle_Up(ctx); return true
         case 116: chewing_handle_PageUp(ctx); return true
         case 121: chewing_handle_PageDown(ctx); return true
@@ -223,14 +314,22 @@ class QBopomofoInputController: IMKInputController {
         // Commit text from chewing engine
         if chewing_commit_Check(ctx) != 0 {
             if let commitStr = chewing_commit_String(ctx) {
-                client.insertText(String(cString: commitStr), replacementRange: NSRange(location: NSNotFound, length: 0))
+                let text = String(cString: commitStr)
+                dbg("commit='\(text)'")
+                client.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
                 chewing_free(commitStr)
             }
+            _ = chewing_ack(ctx)
         }
+
+        // Check candidate state
+        let candTotal = chewing_cand_TotalPage(ctx)
+        let inCandMode = chewing_cand_CheckDone(ctx) == 0 && candTotal > 0
 
         // Build display via Rust session (handles mixed Chinese/English)
         let chinese = getChewingBuffer(ctx)
         let bopomofo = getBopomofoReading(ctx)
+        dbg("display chinese='\(chinese)' bopo='\(bopomofo)' bufLen=\(chewing_buffer_Len(ctx)) candPages=\(candTotal) candMode=\(inCandMode)")
         let display = chinese.withCString { chinBuf in
             bopomofo.withCString { bopoBuf -> String in
                 if let ptr = qb_composing_build_display(session, chinBuf, bopoBuf) {
@@ -263,11 +362,24 @@ class QBopomofoInputController: IMKInputController {
                 replacementRange: NSRange(location: NSNotFound, length: 0)
             )
         }
+
+        // Show/hide candidate window
+        if let candWin = QBopomofoInputController.candidateWindow {
+            if inCandMode {
+                candWin.update()
+                candWin.show(kIMKLocateCandidatesBelowHint)
+            } else {
+                if candWin.isVisible() { candWin.hide() }
+            }
+        }
     }
 
     // MARK: - Commit
 
     private func commitAll(ctx: OpaquePointer, session: OpaquePointer, client: IMKTextInput) {
+        // Hide candidate window
+        QBopomofoInputController.candidateWindow?.hide()
+
         var finalChinese = ""
         if chewing_buffer_Len(ctx) > 0 {
             chewing_handle_Enter(ctx)
@@ -276,6 +388,7 @@ class QBopomofoInputController: IMKInputController {
                     finalChinese = String(cString: commitStr)
                     chewing_free(commitStr)
                 }
+                _ = chewing_ack(ctx)
             }
         }
 
@@ -314,7 +427,32 @@ class QBopomofoInputController: IMKInputController {
                 chewing_free(candStr)
             }
         }
+        dbg("candidates() returned \(candidates.count) items")
         return candidates
+    }
+
+    override func candidateSelected(_ candidateString: NSAttributedString!) {
+        guard let ctx = chewingContext, let session = composingSession else { return }
+        guard let client = currentClient else { return }
+        let selected = candidateString?.string ?? ""
+        dbg("candidateSelected: \(selected)")
+
+        // Find the index of the selected candidate and choose it
+        var idx: Int32 = 0
+        chewing_cand_Enumerate(ctx)
+        while chewing_cand_hasNext(ctx) != 0 {
+            if let candStr = chewing_cand_String(ctx) {
+                let cand = String(cString: candStr)
+                chewing_free(candStr)
+                if cand == selected {
+                    chewing_cand_choose_by_index(ctx, idx)
+                    break
+                }
+                idx += 1
+            }
+        }
+        selectedCandidateIndex = 0
+        updateClientDisplay(ctx: ctx, session: session, client: client)
     }
 
     // MARK: - Helpers
@@ -326,6 +464,18 @@ class QBopomofoInputController: IMKInputController {
             return s
         }
         return ""
+    }
+
+    private func getCandidateCount(_ ctx: OpaquePointer) -> Int {
+        var count = 0
+        chewing_cand_Enumerate(ctx)
+        while chewing_cand_hasNext(ctx) != 0 {
+            if let s = chewing_cand_String(ctx) {
+                chewing_free(s)
+                count += 1
+            }
+        }
+        return count
     }
 
     private func getBopomofoReading(_ ctx: OpaquePointer) -> String {

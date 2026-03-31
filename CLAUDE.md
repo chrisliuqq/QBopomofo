@@ -81,3 +81,37 @@ chewing/
 | [libchewing-data](https://codeberg.org/chewing/libchewing-data) | LGPL-2.1 | 字詞庫 CSV 資料 | `data-provider/chewing-data/` |
 
 **新增依賴時務必更新此表。**
+
+## macOS 輸入法部署
+
+### Build 與安裝腳本
+
+| 腳本 | 用途 |
+|------|------|
+| `mac/build-app.sh` | 編譯 Rust 引擎 + Swift，組裝 `.app` bundle |
+| `mac/install.sh` | build + 安裝到 `~/Library/Input Methods/` + 註冊 |
+| `mac/install.sh --debug` | 同上，啟用 debug log 寫入 `/tmp/qbopomofo.log` |
+| `mac/TestApp/run.sh` | 編譯並啟動 TestApp（開發用） |
+
+### 部署踩坑紀錄
+
+1. **Rust 與 Swift 必須一起重建** — `swift package clean && swift build` 不會重建 Rust `libchewing_capi.a`。必須先跑 `cd base/engine/capi && cargo build --release`，再 build Swift。所有 build 腳本已包含此步驟。
+2. **`InputMethodServerControllerClass` 必須匹配 ObjC 名稱** — Swift class 有 `@objc(QBopomofoInputController)`，所以 Info.plist 裡要寫 `QBopomofoInputController`（不帶 module prefix）。寫 `QBopomofo.QBopomofoInputController` 會導致 IMKServer 找不到 controller。
+3. **`LSBackgroundOnly` 不能設** — 會阻擋 key event 送達，只需要 `LSUIElement = true`。
+4. **macOS 不一定自動啟動輸入法程序** — `install.sh` 會在安裝後手動啟動程序。
+5. **更新後需要殺掉舊 process** — `install.sh` 會自動 `pkill` 舊的 QBopomofo。
+6. **`NSApplication.shared` 必須在 `IMKServer` 之前初始化** — 否則 IMKServer 可能無法正確接收事件。
+7. **確認版本有更新** — build 腳本會產生 `BuildInfo.swift`（含 build timestamp），啟動時印出版本。debug 模式寫到 `/tmp/qbopomofo.log`。
+8. **首次安裝需手動加入** — 系統設定 → 鍵盤 → 輸入方式 → + → Q注音。之後更新不需要重複此步驟。
+
+### Debug 模式
+
+```bash
+# 啟動 debug 模式
+cd mac && ./install.sh --debug
+
+# 查看 log
+tail -f /tmp/qbopomofo.log
+```
+
+環境變數 `QBOPOMOFO_DEBUG=1` 啟用 debug log。正式使用時不設此變數，零 I/O 開銷。

@@ -19,6 +19,8 @@ final class ChewingBridge: ObservableObject {
     @Published var candidates: [String] = []
     @Published var selectedCandidateIndex: Int = 0
     @Published var showCandidates: Bool = false
+    @Published var candidateCurrentPage: Int = 0
+    @Published var candidateTotalPages: Int = 0
     @Published var committedText: String = ""
     @Published var isEnglishMode: Bool = false
     @Published var debugLog: String = ""
@@ -236,6 +238,66 @@ final class ChewingBridge: ObservableObject {
             return true
         }
 
+        // Candidate mode — intercept navigation keys
+        if showCandidates && chewing_cand_TotalPage(ctx) > 0 {
+            switch keyCode {
+            case 125: // Down — next candidate
+                selectedCandidateIndex = min(selectedCandidateIndex + 1, candidates.count - 1)
+                log("Candidate ↓ → \(selectedCandidateIndex)")
+                return true
+            case 126: // Up — previous candidate
+                selectedCandidateIndex = max(selectedCandidateIndex - 1, 0)
+                log("Candidate ↑ → \(selectedCandidateIndex)")
+                return true
+            case 124: // Right — next page
+                chewing_cand_list_next(ctx)
+                log("Candidate page →")
+                selectedCandidateIndex = 0
+                updateState()
+                return true
+            case 123: // Left — previous page
+                chewing_cand_list_prev(ctx)
+                log("Candidate page ←")
+                selectedCandidateIndex = 0
+                updateState()
+                return true
+            case 36: // Enter — select current candidate
+                let pageOffset = chewing_cand_CurrentPage(ctx) * Int32(candidatesPerPage)
+                chewing_cand_choose_by_index(ctx, pageOffset + Int32(selectedCandidateIndex))
+                log("Candidate selected: \(selectedCandidateIndex)")
+                selectedCandidateIndex = 0
+                updateState()
+                return true
+            case 53: // Escape — close candidates
+                chewing_cand_close(ctx)
+                log("Candidate cancelled")
+                selectedCandidateIndex = 0
+                updateState()
+                return true
+            case 49: // Space — select first candidate (same as Enter for index 0)
+                let pageOff = chewing_cand_CurrentPage(ctx) * Int32(candidatesPerPage)
+                chewing_cand_choose_by_index(ctx, pageOff + Int32(selectedCandidateIndex))
+                log("Candidate selected (space): \(selectedCandidateIndex)")
+                selectedCandidateIndex = 0
+                updateState()
+                return true
+            default:
+                // Number keys 1-9 select directly
+                if let ch = characters.first, ch >= "1" && ch <= "9" {
+                    let idx = Int(String(ch))! - 1
+                    if idx < candidates.count {
+                        let pageOff = chewing_cand_CurrentPage(ctx) * Int32(candidatesPerPage)
+                        chewing_cand_choose_by_index(ctx, pageOff + Int32(idx))
+                        log("Candidate selected (#\(idx + 1))")
+                        selectedCandidateIndex = 0
+                        updateState()
+                        return true
+                    }
+                }
+                break
+            }
+        }
+
         // Chinese mode: space with no buffer → output space directly
         if keyCode == 49 && chewing_buffer_Len(ctx) == 0 && chewing_bopomofo_Check(ctx) == 0 {
             committedText += " "
@@ -254,6 +316,7 @@ final class ChewingBridge: ObservableObject {
                     log("Committed: \(text)")
                     chewing_free(commitStr)
                 }
+                _ = chewing_ack(ctx)
             }
             updateState()
         }
@@ -296,9 +359,15 @@ final class ChewingBridge: ObservableObject {
             chewing_handle_Right(ctx)
             log("Key: Right")
             return true
-        case 125:
-            chewing_handle_Down(ctx)
-            log("Key: Down")
+        case 125: // Down — open candidate window
+            if chewing_buffer_Len(ctx) > 0 {
+                chewing_cand_open(ctx)
+                selectedCandidateIndex = 0
+                log("Key: Down (open candidates)")
+            } else {
+                chewing_handle_Down(ctx)
+                log("Key: Down")
+            }
             return true
         case 126:
             chewing_handle_Up(ctx)
@@ -344,6 +413,7 @@ final class ChewingBridge: ObservableObject {
                     finalChinese = String(cString: commitStr)
                     chewing_free(commitStr)
                 }
+                _ = chewing_ack(ctx)
             }
         }
 
@@ -421,10 +491,13 @@ final class ChewingBridge: ObservableObject {
             if candidates != candList { candidates = candList }
             if !showCandidates { showCandidates = true }
             let currentPage = chewing_cand_CurrentPage(ctx)
-            log("Candidates page \(currentPage + 1)/\(totalPage): \(candList.prefix(9).joined(separator: " "))")
+            if candidateCurrentPage != Int(currentPage) { candidateCurrentPage = Int(currentPage) }
+            if candidateTotalPages != Int(totalPage) { candidateTotalPages = Int(totalPage) }
+            log("Candidates page \(currentPage + 1)/\(totalPage): \(candList.prefix(candidatesPerPage).joined(separator: " "))")
         } else {
             if !candidates.isEmpty { candidates = [] }
             if showCandidates { showCandidates = false }
+            if candidateTotalPages != 0 { candidateTotalPages = 0 }
         }
 
         // Auto-flush: composing display > 20 chars → commit
