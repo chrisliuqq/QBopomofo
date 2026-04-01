@@ -108,10 +108,33 @@ class CandidatePanel: NSPanel {
     }
 
     func show(at point: NSPoint) {
-        // Position: point is bottom-left of the cursor in screen coords
-        // We want the panel to appear below the cursor
-        let origin = NSPoint(x: point.x, y: point.y - self.frame.height)
-        self.setFrameOrigin(origin)
+        let panelSize = self.frame.size
+        var x = point.x
+        var y = point.y - panelSize.height
+
+        // Clamp to screen bounds
+        if let screen = NSScreen.main ?? NSScreen.screens.first {
+            let screenFrame = screen.visibleFrame
+
+            // Right edge
+            if x + panelSize.width > screenFrame.maxX {
+                x = screenFrame.maxX - panelSize.width
+            }
+            // Left edge
+            if x < screenFrame.minX {
+                x = screenFrame.minX
+            }
+            // Bottom edge — flip above cursor
+            if y < screenFrame.minY {
+                y = point.y
+            }
+            // Top edge
+            if y + panelSize.height > screenFrame.maxY {
+                y = screenFrame.maxY - panelSize.height
+            }
+        }
+
+        self.setFrameOrigin(NSPoint(x: x, y: y))
         self.orderFront(nil)
     }
 
