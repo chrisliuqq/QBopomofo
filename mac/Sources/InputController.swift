@@ -446,9 +446,36 @@ class QBopomofoInputController: IMKInputController {
         }
 
         if !display.isEmpty {
+            let hasMixed = qb_composing_has_mixed_content(session) != 0
+            let nsDisplay = display as NSString
+
+            // Compute cursor position (UTF-16 offset)
+            let cursorPos: Int
+            if !hasMixed {
+                // Pure Chinese mode: display = chinese + bopomofo, cursor maps directly
+                let chewingCursor = Int(chewing_cursor_Current(ctx))
+                let clampedCursor = min(chewingCursor, chinese.count)
+                let charIndex = chinese.index(chinese.startIndex, offsetBy: clampedCursor)
+                cursorPos = chinese[chinese.startIndex..<charIndex].utf16.count
+            } else {
+                // Mixed content: cursor at end (safe fallback)
+                cursorPos = nsDisplay.length
+            }
+
+            // Build attributed string: thick underline on char at cursor, thin on rest
+            let attrStr = NSMutableAttributedString(string: display)
+            let fullRange = NSRange(location: 0, length: nsDisplay.length)
+            attrStr.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
+            attrStr.addAttribute(.markedClauseSegment, value: 0, range: fullRange)
+            if !hasMixed && cursorPos < nsDisplay.length {
+                let cursorCharRange = nsDisplay.rangeOfComposedCharacterSequence(at: cursorPos)
+                attrStr.addAttribute(.underlineStyle, value: NSUnderlineStyle.thick.rawValue, range: cursorCharRange)
+                attrStr.addAttribute(.markedClauseSegment, value: 1, range: cursorCharRange)
+            }
+
             client.setMarkedText(
-                display,
-                selectionRange: NSRange(location: display.count, length: 0),
+                attrStr,
+                selectionRange: NSRange(location: cursorPos, length: 0),
                 replacementRange: NSRange(location: NSNotFound, length: 0)
             )
         } else {
