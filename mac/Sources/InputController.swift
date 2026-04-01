@@ -64,6 +64,8 @@ class QBopomofoInputController: IMKInputController {
     private var chewingContext: OpaquePointer?
     private var composingSession: OpaquePointer?
     private var isAutoFlushing: Bool = false
+    private var mixedDisplayCursor: Int? = nil   // character-level cursor for mixed content (nil = at end)
+    private var lastDisplayCharCount: Int = 0    // character count of last display string
     private var currentClient: IMKTextInput?
 
     private var candidatePanel: CandidatePanel { CandidatePanel.shared }
@@ -258,10 +260,31 @@ class QBopomofoInputController: IMKInputController {
                 return true
             }
             if keyCode == 36 { // Enter
+                mixedDisplayCursor = nil
                 commitAll(ctx: ctx, session: session, client: client, source: "enterEnglish")
                 return true
             }
+            if keyCode == 53 { // Escape (in English mode, handled above but just in case)
+                mixedDisplayCursor = nil
+            }
             if keyCode == 51 { // Backspace
+                if let curPos = mixedDisplayCursor {
+                    let chinBuf = getChewingBuffer(ctx)
+                    let bopo = getBopomofoReading(ctx)
+                    let result = chinBuf.withCString { c in
+                        bopo.withCString { b in
+                            qb_composing_delete_at_cursor(session, Int32(curPos), c, b)
+                        }
+                    }
+                    if result == 1 {
+                        mixedDisplayCursor = curPos > 0 ? curPos - 1 : 0
+                        dbg("english delete at cursor \(curPos) → \(mixedDisplayCursor!)")
+                        updateClientDisplay(ctx: ctx, session: session, client: client)
+                        return true
+                    }
+                    // Chinese region or nothing: reset cursor, fall through
+                    mixedDisplayCursor = nil
+                }
                 if qb_composing_backspace_english(session) != 0 {
                     updateClientDisplay(ctx: ctx, session: session, client: client)
                     return true
@@ -269,6 +292,22 @@ class QBopomofoInputController: IMKInputController {
             }
             // Space in English mode
             if keyCode == 49 {
+                if let curPos = mixedDisplayCursor {
+                    let chinBuf = getChewingBuffer(ctx)
+                    let bopo = getBopomofoReading(ctx)
+                    let handled = chinBuf.withCString { c in
+                        bopo.withCString { b in
+                            qb_composing_insert_at_cursor(session, UInt8(Character(" ").asciiValue!), Int32(curPos), c, b)
+                        }
+                    }
+                    if handled != 0 {
+                        mixedDisplayCursor = curPos + 1
+                        dbg("english space at cursor \(curPos) → \(mixedDisplayCursor!)")
+                        updateClientDisplay(ctx: ctx, session: session, client: client)
+                        return true
+                    }
+                    mixedDisplayCursor = nil
+                }
                 let chinBuf = getChewingBuffer(ctx)
                 let directCommit = chinBuf.withCString { cStr in
                     qb_composing_type_english(session, UInt8(Character(" ").asciiValue!), cStr)
@@ -282,6 +321,23 @@ class QBopomofoInputController: IMKInputController {
                 return true
             }
             if let ch = chars.first, ch.isASCII, !ch.isNewline {
+                if let curPos = mixedDisplayCursor {
+                    let chinBuf = getChewingBuffer(ctx)
+                    let bopo = getBopomofoReading(ctx)
+                    let handled = chinBuf.withCString { c in
+                        bopo.withCString { b in
+                            qb_composing_insert_at_cursor(session, UInt8(ch.asciiValue ?? 0), Int32(curPos), c, b)
+                        }
+                    }
+                    if handled != 0 {
+                        mixedDisplayCursor = curPos + 1
+                        dbg("english insert '\(ch)' at cursor \(curPos) → \(mixedDisplayCursor!)")
+                        updateClientDisplay(ctx: ctx, session: session, client: client)
+                        return true
+                    }
+                    // Not in English region: reset cursor, fall through
+                    mixedDisplayCursor = nil
+                }
                 let chinBuf = getChewingBuffer(ctx)
                 let directCommit = chinBuf.withCString { cStr in
                     qb_composing_type_english(session, UInt8(ch.asciiValue ?? 0), cStr)
@@ -296,8 +352,25 @@ class QBopomofoInputController: IMKInputController {
             }
         }
 
-        // Backspace with mixed content — try deleting from session first
+        // Backspace with mixed content — try cursor-aware delete, then fallback
         if keyCode == 51 && qb_composing_has_mixed_content(session) != 0 {
+            if let curPos = mixedDisplayCursor {
+                let chinBuf = getChewingBuffer(ctx)
+                let bopo = getBopomofoReading(ctx)
+                let result = chinBuf.withCString { c in
+                    bopo.withCString { b in
+                        qb_composing_delete_at_cursor(session, Int32(curPos), c, b)
+                    }
+                }
+                if result == 1 {
+                    mixedDisplayCursor = curPos > 0 ? curPos - 1 : 0
+                    dbg("mixed delete at cursor \(curPos) → \(mixedDisplayCursor!)")
+                    updateClientDisplay(ctx: ctx, session: session, client: client)
+                    return true
+                }
+                // Chinese region: reset cursor, fall through to chewing
+                mixedDisplayCursor = nil
+            }
             if qb_composing_backspace_english(session) != 0 {
                 updateClientDisplay(ctx: ctx, session: session, client: client)
                 return true
@@ -306,10 +379,12 @@ class QBopomofoInputController: IMKInputController {
 
         // Enter/Escape with mixed content
         if keyCode == 36 && qb_composing_has_mixed_content(session) != 0 {
+            mixedDisplayCursor = nil
             commitAll(ctx: ctx, session: session, client: client, source: "enterMixed")
             return true
         }
         if keyCode == 53 && qb_composing_has_mixed_content(session) != 0 {
+            mixedDisplayCursor = nil
             qb_composing_clear(session)
             chewing_handle_Esc(ctx)
             updateClientDisplay(ctx: ctx, session: session, client: client)
@@ -366,6 +441,24 @@ class QBopomofoInputController: IMKInputController {
                 }
             }
         }
+
+        // Mixed content cursor navigation — Left/Right move through entire display
+        if qb_composing_has_mixed_content(session) != 0 && (keyCode == 123 || keyCode == 124) {
+            if keyCode == 123 { // Left
+                let pos = mixedDisplayCursor ?? lastDisplayCharCount
+                if pos > 0 { mixedDisplayCursor = pos - 1 }
+                dbg("mixed cursor ← → pos=\(mixedDisplayCursor ?? -1)")
+            } else { // Right
+                let pos = mixedDisplayCursor ?? lastDisplayCharCount
+                if pos < lastDisplayCharCount { mixedDisplayCursor = pos + 1 } else { mixedDisplayCursor = nil }
+                dbg("mixed cursor → → pos=\(mixedDisplayCursor ?? -1)")
+            }
+            updateClientDisplay(ctx: ctx, session: session, client: client)
+            return true
+        }
+
+        // Chinese mode input resets mixed cursor (chewing engine manages its own cursor)
+        mixedDisplayCursor = nil
 
         // Chinese mode — send to chewing engine
         let handled = processChewingKey(ctx: ctx, keyCode: keyCode, chars: chars)
@@ -452,6 +545,7 @@ class QBopomofoInputController: IMKInputController {
         if !display.isEmpty {
             let hasMixed = qb_composing_has_mixed_content(session) != 0
             let nsDisplay = display as NSString
+            lastDisplayCharCount = display.count
 
             // Compute cursor position (UTF-16 offset)
             let cursorPos: Int
@@ -461,8 +555,13 @@ class QBopomofoInputController: IMKInputController {
                 let clampedCursor = min(chewingCursor, chinese.count)
                 let charIndex = chinese.index(chinese.startIndex, offsetBy: clampedCursor)
                 cursorPos = chinese[chinese.startIndex..<charIndex].utf16.count
+            } else if let mcp = mixedDisplayCursor {
+                // Mixed content with explicit cursor position
+                let clampedPos = min(mcp, display.count)
+                let idx = display.index(display.startIndex, offsetBy: clampedPos)
+                cursorPos = display[display.startIndex..<idx].utf16.count
             } else {
-                // Mixed content: cursor at end (safe fallback)
+                // Mixed content: cursor at end
                 cursorPos = nsDisplay.length
             }
 
@@ -471,7 +570,7 @@ class QBopomofoInputController: IMKInputController {
             let fullRange = NSRange(location: 0, length: nsDisplay.length)
             attrStr.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: fullRange)
             attrStr.addAttribute(.markedClauseSegment, value: 0, range: fullRange)
-            if !hasMixed && cursorPos < nsDisplay.length {
+            if cursorPos < nsDisplay.length {
                 let cursorCharRange = nsDisplay.rangeOfComposedCharacterSequence(at: cursorPos)
                 attrStr.addAttribute(.underlineStyle, value: NSUnderlineStyle.thick.rawValue, range: cursorCharRange)
                 attrStr.addAttribute(.markedClauseSegment, value: 1, range: cursorCharRange)

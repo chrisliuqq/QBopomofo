@@ -181,6 +181,71 @@ pub extern "C" fn qb_composing_clear(session: *mut QBComposingSession) {
     s.inner.clear();
 }
 
+/// Insert an English character at a specific display cursor position.
+/// Returns 1 if handled (English region), 0 if not (Chinese/bopomofo region).
+#[unsafe(no_mangle)]
+pub extern "C" fn qb_composing_insert_at_cursor(
+    session: *mut QBComposingSession,
+    ch: u8,
+    cursor: i32,
+    chinese_buffer: *const c_char,
+    bopomofo: *const c_char,
+) -> i32 {
+    if session.is_null() || cursor < 0 {
+        return 0;
+    }
+    let s = unsafe { &mut *session };
+    let chinese = if chinese_buffer.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(chinese_buffer) }
+            .to_str()
+            .unwrap_or("")
+    };
+    let bopo = if bopomofo.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(bopomofo) }
+            .to_str()
+            .unwrap_or("")
+    };
+    if s.inner.insert_english_at(ch as char, cursor as usize, chinese, bopo) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Delete the character before the given display cursor position.
+/// Returns: 0 = nothing, 1 = English char deleted, 2 = Chinese/bopomofo region (delegate to chewing).
+#[unsafe(no_mangle)]
+pub extern "C" fn qb_composing_delete_at_cursor(
+    session: *mut QBComposingSession,
+    cursor: i32,
+    chinese_buffer: *const c_char,
+    bopomofo: *const c_char,
+) -> i32 {
+    if session.is_null() || cursor < 0 {
+        return 0;
+    }
+    let s = unsafe { &mut *session };
+    let chinese = if chinese_buffer.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(chinese_buffer) }
+            .to_str()
+            .unwrap_or("")
+    };
+    let bopo = if bopomofo.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(bopomofo) }
+            .to_str()
+            .unwrap_or("")
+    };
+    s.inner.delete_at(cursor as usize, chinese, bopo)
+}
+
 /// Set Shift behavior. 0=None, 1=SmartToggle, 2=ToggleOnly.
 #[unsafe(no_mangle)]
 pub extern "C" fn qb_composing_set_shift_behavior(session: *mut QBComposingSession, behavior: i32) {

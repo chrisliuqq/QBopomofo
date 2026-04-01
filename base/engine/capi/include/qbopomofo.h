@@ -80,6 +80,27 @@ char *qb_composing_commit_all(QBComposingSession *session, const char *final_chi
 /** Clear all composing state (Esc/reset). */
 void qb_composing_clear(QBComposingSession *session);
 
+/**
+ * Insert an English character at a specific display cursor position (mixed content).
+ * @param ch ASCII character to insert.
+ * @param cursor display cursor position (character index).
+ * @param chinese_buffer current chewing buffer (UTF-8).
+ * @param bopomofo current bopomofo reading (UTF-8).
+ * @return 1 if handled (English region), 0 if not (Chinese/bopomofo region).
+ */
+int qb_composing_insert_at_cursor(QBComposingSession *session, uint8_t ch, int cursor,
+                                   const char *chinese_buffer, const char *bopomofo);
+
+/**
+ * Delete the character before the given display cursor position (mixed content).
+ * @param cursor display cursor position (character index).
+ * @param chinese_buffer current chewing buffer (UTF-8).
+ * @param bopomofo current bopomofo reading (UTF-8).
+ * @return 0 = nothing, 1 = English char deleted, 2 = Chinese region (delegate to chewing).
+ */
+int qb_composing_delete_at_cursor(QBComposingSession *session, int cursor,
+                                   const char *chinese_buffer, const char *bopomofo);
+
 /** Set Shift behavior. Use QB_SHIFT_* constants. */
 void qb_composing_set_shift_behavior(QBComposingSession *session, int behavior);
 
