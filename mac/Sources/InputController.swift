@@ -224,15 +224,16 @@ class QBopomofoInputController: IMKInputController {
         let isCandMode = inCandidateMode(ctx)
         dbg("key=\(keyCode) chars=\(chars) candMode=\(isCandMode)")
 
-        // Pass through Command/Control and numpad keys
+        // Pass through Command/Control
         if modifiers.contains(.command) || modifiers.contains(.control) { return false }
-        // Numpad digit keys (keyCodes 82-92) → pass through unless in candidate mode
-        let numpadDigits: Set<UInt16> = [82,83,84,85,86,87,88,89,91,92] // 0-9 on numpad
-        if numpadDigits.contains(keyCode) && !isCandMode { return false }
 
         // Nothing in buffer/bopomofo and not in candidate mode → pass through navigation keys
         let hasContent = chewing_buffer_Len(ctx) > 0 || chewing_bopomofo_Check(ctx) != 0
             || qb_composing_has_mixed_content(session) != 0
+        if let numpadDigit = numpadDigitCharacter(for: keyCode), !isCandMode {
+            guard hasContent else { return false }
+            return insertASCIIIntoComposition(numpadDigit, ctx: ctx, session: session, client: client, source: "numpadDigit")
+        }
         if !hasContent && !isCandMode {
             let passthroughKeys: Set<UInt16> = [
                 36, 51, 117, 123, 124, 125, 126, 116, 121, 115, 119, 53, 48
@@ -304,63 +305,10 @@ class QBopomofoInputController: IMKInputController {
             }
             // Space in English mode
             if keyCode == 49 {
-                if let curPos = mixedDisplayCursor {
-                    let chinBuf = getChewingBuffer(ctx)
-                    let bopo = getBopomofoReading(ctx)
-                    let handled = chinBuf.withCString { c in
-                        bopo.withCString { b in
-                            qb_composing_insert_at_cursor(session, UInt8(Character(" ").asciiValue!), Int32(curPos), c, b)
-                        }
-                    }
-                    if handled != 0 {
-                        mixedDisplayCursor = curPos + 1
-                        dbg("english space at cursor \(curPos) → \(mixedDisplayCursor!)")
-                        updateClientDisplay(ctx: ctx, session: session, client: client)
-                        return true
-                    }
-                    mixedDisplayCursor = nil
-                }
-                let chinBuf = getChewingBuffer(ctx)
-                let directCommit = chinBuf.withCString { cStr in
-                    qb_composing_type_english(session, UInt8(Character(" ").asciiValue!), cStr)
-                }
-                if directCommit != 0 {
-                    dbg("insertText=' ' [source:englishSpace]")
-                    client.insertText(" ", replacementRange: NSRange(location: NSNotFound, length: 0))
-                } else {
-                    updateClientDisplay(ctx: ctx, session: session, client: client)
-                }
-                return true
+                return insertASCIIIntoComposition(" ", ctx: ctx, session: session, client: client, source: "englishSpace")
             }
             if let ch = chars.first, ch.isASCII, !ch.isNewline {
-                if let curPos = mixedDisplayCursor {
-                    let chinBuf = getChewingBuffer(ctx)
-                    let bopo = getBopomofoReading(ctx)
-                    let handled = chinBuf.withCString { c in
-                        bopo.withCString { b in
-                            qb_composing_insert_at_cursor(session, UInt8(ch.asciiValue ?? 0), Int32(curPos), c, b)
-                        }
-                    }
-                    if handled != 0 {
-                        mixedDisplayCursor = curPos + 1
-                        dbg("english insert '\(ch)' at cursor \(curPos) → \(mixedDisplayCursor!)")
-                        updateClientDisplay(ctx: ctx, session: session, client: client)
-                        return true
-                    }
-                    // Not in English region: reset cursor, fall through
-                    mixedDisplayCursor = nil
-                }
-                let chinBuf = getChewingBuffer(ctx)
-                let directCommit = chinBuf.withCString { cStr in
-                    qb_composing_type_english(session, UInt8(ch.asciiValue ?? 0), cStr)
-                }
-                if directCommit != 0 {
-                    dbg("insertText='\(ch)' [source:englishChar]")
-                    client.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0))
-                } else {
-                    updateClientDisplay(ctx: ctx, session: session, client: client)
-                }
-                return true
+                return insertASCIIIntoComposition(ch, ctx: ctx, session: session, client: client, source: "englishChar")
             }
         }
 
@@ -855,6 +803,76 @@ class QBopomofoInputController: IMKInputController {
         } else if target > current {
             for _ in 0..<(target - current) { chewing_handle_Right(ctx) }
         }
+    }
+
+    private func numpadDigitCharacter(for keyCode: UInt16) -> Character? {
+        switch keyCode {
+        case 82: return "0"
+        case 83: return "1"
+        case 84: return "2"
+        case 85: return "3"
+        case 86: return "4"
+        case 87: return "5"
+        case 88: return "6"
+        case 89: return "7"
+        case 91: return "8"
+        case 92: return "9"
+        default: return nil
+        }
+    }
+
+    private func preferredInsertCursor(ctx: OpaquePointer, session: OpaquePointer) -> Int? {
+        if let cursor = mixedDisplayCursor {
+            return cursor
+        }
+        if qb_composing_has_mixed_content(session) != 0 {
+            return lastDisplayCharCount
+        }
+        if chewing_bopomofo_Check(ctx) == 0 {
+            return Int(chewing_cursor_Current(ctx))
+        }
+        return nil
+    }
+
+    private func insertASCIIIntoComposition(
+        _ ch: Character,
+        ctx: OpaquePointer,
+        session: OpaquePointer,
+        client: IMKTextInput,
+        source: String
+    ) -> Bool {
+        guard ch.isASCII, let ascii = ch.asciiValue else { return false }
+
+        let chinBuf = getChewingBuffer(ctx)
+        let bopo = getBopomofoReading(ctx)
+
+        if let curPos = preferredInsertCursor(ctx: ctx, session: session) {
+            let handled = chinBuf.withCString { c in
+                bopo.withCString { b in
+                    qb_composing_insert_at_cursor(session, ascii, Int32(curPos), c, b)
+                }
+            }
+            if handled != 0 {
+                mixedDisplayCursor = curPos + 1
+                dbg("\(source) insert '\(ch)' at cursor \(curPos) → \(mixedDisplayCursor!)")
+                updateClientDisplay(ctx: ctx, session: session, client: client)
+                return true
+            }
+            if mixedDisplayCursor != nil {
+                mixedDisplayCursor = nil
+            }
+        }
+
+        let directCommit = chinBuf.withCString { cStr in
+            qb_composing_type_english(session, ascii, cStr)
+        }
+        if directCommit != 0 {
+            dbg("insertText='\(ch)' [source:\(source)]")
+            client.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0))
+        } else {
+            updateClientDisplay(ctx: ctx, session: session, client: client)
+        }
+        return true
     }
 
     private func getChewingBuffer(_ ctx: OpaquePointer) -> String {

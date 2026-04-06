@@ -335,7 +335,7 @@ impl ComposingSession {
     }
 
     /// Insert an English character at the given display cursor position.
-    /// Returns true if handled (cursor was in an English region).
+    /// Returns true if handled.
     pub fn insert_english_at(
         &mut self,
         ch: char,
@@ -356,6 +356,42 @@ impl ComposingSession {
                 }
                 true
             }
+            Some((0, seg_idx, char_offset)) => {
+                let Segment::Chinese(text) = &self.segments[seg_idx] else {
+                    return false;
+                };
+                let (prefix, suffix) = Self::split_at_char(text, char_offset);
+                let mut replacement = Vec::with_capacity(3);
+                if !prefix.is_empty() {
+                    replacement.push(Segment::Chinese(prefix));
+                }
+                replacement.push(Segment::English(ch.to_string()));
+                if !suffix.is_empty() {
+                    replacement.push(Segment::Chinese(suffix));
+                }
+                self.segments.splice(seg_idx..=seg_idx, replacement);
+                true
+            }
+            Some((2, _, char_offset)) => {
+                let prefix: String = self
+                    .remaining_chinese(chinese_buffer)
+                    .chars()
+                    .take(char_offset)
+                    .collect();
+                if !prefix.is_empty() {
+                    self.segments.push(Segment::Chinese(prefix));
+                }
+                self.segments.push(Segment::English(ch.to_string()));
+                true
+            }
+            Some((3, _, _)) => {
+                let remaining = self.remaining_chinese(chinese_buffer);
+                if !remaining.is_empty() {
+                    self.segments.push(Segment::Chinese(remaining.to_string()));
+                }
+                self.segments.push(Segment::English(ch.to_string()));
+                true
+            }
             Some((4, _, char_offset)) => {
                 // English buffer
                 let byte_pos = self
@@ -368,8 +404,16 @@ impl ComposingSession {
                 true
             }
             None => {
-                // At end — append
-                self.english_buffer.push(ch);
+                let remaining = self.remaining_chinese(chinese_buffer);
+                if !remaining.is_empty() || !bopomofo.is_empty() {
+                    if !remaining.is_empty() {
+                        self.segments.push(Segment::Chinese(remaining.to_string()));
+                    }
+                    self.segments.push(Segment::English(ch.to_string()));
+                } else {
+                    // At end of an existing English buffer — append in place.
+                    self.english_buffer.push(ch);
+                }
                 true
             }
             _ => false, // Chinese or Bopomofo region
@@ -556,10 +600,68 @@ impl ComposingSession {
             }
         }
     }
+
+    fn split_at_char(text: &str, char_offset: usize) -> (String, String) {
+        let byte_pos = text
+            .char_indices()
+            .nth(char_offset)
+            .map(|(idx, _)| idx)
+            .unwrap_or(text.len());
+        (text[..byte_pos].to_string(), text[byte_pos..].to_string())
+    }
 }
 
 impl Default for ComposingSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ComposingSession;
+
+    #[test]
+    fn insert_english_at_splits_remaining_chinese() {
+        let mut session = ComposingSession::new();
+
+        assert!(session.insert_english_at('3', 2, "你好世界", ""));
+        assert_eq!(session.build_display("你好世界", ""), "你好3世界");
+        assert_eq!(session.display_to_chewing_cursor(3, "你好世界", ""), 2);
+        assert_eq!(session.commit_all("你好世界"), "你好3世界");
+    }
+
+    #[test]
+    fn insert_english_at_splits_snapshotted_chinese_segment() {
+        let mut session = ComposingSession::new();
+
+        assert!(session.insert_english_at('3', 2, "你好世界", ""));
+        assert!(session.insert_english_at('4', 1, "你好世界", ""));
+
+        assert_eq!(session.build_display("你好世界", ""), "你4好3世界");
+        assert_eq!(session.display_to_chewing_cursor(2, "你好世界", ""), 1);
+        assert_eq!(session.commit_all("你好世界"), "你4好3世界");
+    }
+
+    #[test]
+    fn insert_english_at_end_of_chinese_keeps_future_chinese_after_it() {
+        let mut session = ComposingSession::new();
+
+        assert!(session.insert_english_at('3', 2, "甲乙", ""));
+
+        assert_eq!(session.build_display("甲乙", ""), "甲乙3");
+        assert_eq!(session.display_to_chewing_cursor(3, "甲乙", ""), 2);
+        assert_eq!(session.build_display("甲乙丙丁", ""), "甲乙3丙丁");
+        assert_eq!(session.commit_all("甲乙丙丁"), "甲乙3丙丁");
+    }
+
+    #[test]
+    fn insert_english_at_before_bopomofo_keeps_cursor_after_inserted_text() {
+        let mut session = ComposingSession::new();
+
+        assert!(session.insert_english_at('3', 2, "你好", "ㄅ"));
+
+        assert_eq!(session.build_display("你好", "ㄅ"), "你好3ㄅ");
+        assert_eq!(session.display_to_chewing_cursor(3, "你好", "ㄅ"), 2);
     }
 }

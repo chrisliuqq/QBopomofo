@@ -1,7 +1,7 @@
 import Cocoa
 import InputMethodKit
 
-private let kConnectionName = "QBopomofo_Connection"
+private let kConnectionName = "org.qbopomofo.inputmethod.QBopomofo_Connection"
 
 // Install mode: register input source with macOS
 if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "install" {
