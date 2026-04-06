@@ -104,6 +104,29 @@ cd mac
 ./install.sh
 ```
 
+### 建立 `.pkg` 安裝程式
+
+如果你要發給其他 Mac 直接點兩下安裝，可以在開發機上產生 `.pkg`：
+
+```bash
+cd QBopomofo/mac
+./build-pkg.sh
+```
+
+產生出的檔案會在：
+
+```bash
+mac/.build/QBopomofo-Installer.pkg
+```
+
+目前這是未 notarize 的安裝骨架版本，適合內部測試或自用機器。目標 Mac 安裝後，app 會被放到：
+
+```bash
+/Library/Input Methods/QBopomofo.app
+```
+
+安裝完成後，仍需到「系統設定 → 鍵盤 → 輸入方式 → +」手動加入 `Q注音`。
+
 ### 常見問題
 
 `cargo: command not found`
