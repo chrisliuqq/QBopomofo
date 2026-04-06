@@ -36,7 +36,39 @@ QBopomofo/
 - Swift 6.1 以上
 - Rust toolchain
 
-安裝：
+### Apple Silicon / M 系列 Mac 從零安裝
+
+如果另一台 Mac 還沒有安裝開發環境，先執行：
+
+```bash
+xcode-select --install
+```
+
+如需安裝 Homebrew：
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+安裝 Rust：
+
+```bash
+brew install rust
+```
+
+確認工具可用：
+
+```bash
+swift --version
+rustc --version
+cargo --version
+```
+
+### 安裝 Q注音
+
+在目標 Mac 上執行：
 
 ```bash
 git clone https://github.com/lionello06160/QBopomofo.git
@@ -47,6 +79,45 @@ cd QBopomofo/mac
 安裝完成後，到「系統設定 → 鍵盤 → 輸入方式 → +」加入 `Q注音`。
 
 如果是使用 Homebrew 安裝 Rust（特別是 Apple Silicon / `/opt/homebrew` 環境），目前 repo 已內建處理 Swift build plugin 的 PATH，不需要額外手動設定 `rustc` 路徑。
+
+### 安裝後啟用
+
+1. 打開「系統設定 → 鍵盤 → 輸入方式」
+2. 按 `+`
+3. 加入 `Q注音`
+4. 切換到 `Q注音` 開始使用
+
+如果安裝後沒有立刻出現在輸入方式清單：
+
+- 先完全退出正在使用的 app 再重新打開
+- 重新切換一次輸入法
+- 必要時登出再登入 macOS
+
+### 重新安裝 / 更新
+
+如果你已經 clone 過 repo，之後更新只要：
+
+```bash
+cd QBopomofo
+git pull
+cd mac
+./install.sh
+```
+
+### 常見問題
+
+`cargo: command not found`
+
+- 代表 Rust 尚未安裝，請先執行 `brew install rust`
+
+`swift: command not found`
+
+- 代表 Xcode Command Line Tools 尚未安裝，請先執行 `xcode-select --install`
+
+安裝成功但無法切到 `Q注音`
+
+- 先到「系統設定 → 鍵盤 → 輸入方式」確認已加入 `Q注音`
+- 如果已加入但 app 內無法使用，先完全退出該 app 再重新開啟
 
 ## 與上游的關係
 
