@@ -57,7 +57,6 @@ private func logCorrection(_ entry: String) {
 /// 負責處理按鍵事件、與 libchewing 引擎互動、管理輸入狀態
 /// 組字邏輯（Shift SmartToggle、中英混排）委託給 Rust ComposingSession (qb_composing_*)
 @objc(QBopomofoInputController)
-@MainActor
 class QBopomofoInputController: IMKInputController {
 
     // MARK: - Properties
@@ -75,7 +74,7 @@ class QBopomofoInputController: IMKInputController {
     private var spaceCycleTargets: [String] = [] // pre-computed candidates to cycle through
     private var spaceCycleStep: Int = 0          // current position in targets
 
-    private var candidatePanel: CandidatePanel { CandidatePanel.shared }
+    nonisolated(unsafe) private var candidatePanel: CandidatePanel { CandidatePanel.shared }
 
     /// 選字鍵（從偏好設定載入）
     private var selectionKeys: [Character] = Array("1234567890")
@@ -848,7 +847,8 @@ class QBopomofoInputController: IMKInputController {
         if qb_composing_has_mixed_content(session) != 0 {
             return lastDisplayCharCount
         }
-        if chewing_bopomofo_Check(ctx) == 0 {
+        // Only return a cursor position if there's actual content in the buffer
+        if chewing_buffer_Len(ctx) > 0 && chewing_bopomofo_Check(ctx) == 0 {
             return Int(chewing_cursor_Current(ctx))
         }
         return nil
