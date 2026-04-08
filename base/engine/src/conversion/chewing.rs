@@ -142,9 +142,11 @@ impl ChewingEngine {
             .collect();
 
         let max_phrases_count = 10;
-        // Approximate value. We only use this global for scaling for now, so we can
-        // use any value.
-        let global_total: f64 = 1_000_000_000.0;
+        // Scaling factor for frequency-to-probability conversion. ln(global_total)
+        // acts as an implicit per-segment penalty in path scoring. Too large causes
+        // over-merging (rare compounds beat common words); too small causes
+        // over-splitting (common chars break apart valid compounds).
+        let global_total: f64 = 1_000_000.0;
         let mut phrases = dict
             .lookup(&syllables, self.lookup_strategy)
             .into_iter()
