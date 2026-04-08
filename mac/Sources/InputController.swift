@@ -95,6 +95,9 @@ class QBopomofoInputController: IMKInputController {
         let dictPath = Bundle.main.resourcePath ?? ""
         dbg("CHEWING_PATH = \(dictPath)")
         setenv("CHEWING_PATH", dictPath, 1)
+        if kDebugMode {
+            setenv("RUST_LOG", "debug", 1)
+        }
 
         chewingContext = chewing_new()
         guard chewingContext != nil else {
@@ -152,6 +155,9 @@ class QBopomofoInputController: IMKInputController {
         chewing_set_spaceAsSelection(ctx, 1)
         chewing_set_escCleanAllBuf(ctx, 1)
         chewing_set_autoShiftCur(ctx, 1)
+
+        let disableAutoLearn = defaults.bool(forKey: "org.qbopomofo.disableAutoLearn")
+        chewing_set_autoLearn(ctx, disableAutoLearn ? 1 : 0)
     }
 
     @objc private func preferencesDidChange() {

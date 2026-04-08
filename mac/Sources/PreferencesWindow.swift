@@ -7,7 +7,7 @@ class PreferencesWindow: NSWindow {
 
     private init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 376),
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 406),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -19,9 +19,9 @@ class PreferencesWindow: NSWindow {
     }
 
     private func setupUI() {
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 376))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 406))
 
-        var y = 326
+        var y = 356
 
         // Title
         let titleLabel = NSTextField(labelWithString: "Q注音 設定")
@@ -101,6 +101,13 @@ class PreferencesWindow: NSWindow {
         contentView.addSubview(cyclePopup)
         y -= 36
 
+        // Auto-learn
+        let learnCheck = NSButton(checkboxWithTitle: "自動學習詞頻（根據使用習慣調整選字順序）", target: self, action: #selector(autoLearnChanged(_:)))
+        learnCheck.frame = NSRect(x: 20, y: y, width: 360, height: 22)
+        learnCheck.state = UserDefaults.standard.bool(forKey: "org.qbopomofo.disableAutoLearn") ? .off : .on
+        contentView.addSubview(learnCheck)
+        y -= 30
+
         // Persistent logging
         let logCheck = NSButton(checkboxWithTitle: "保留偵錯紀錄（/tmp/qbopomofo-*.log）", target: self, action: #selector(persistentLogChanged(_:)))
         logCheck.frame = NSRect(x: 20, y: y, width: 360, height: 22)
@@ -145,6 +152,11 @@ class PreferencesWindow: NSWindow {
 
     @objc private func spaceCycleCountChanged(_ sender: NSPopUpButton) {
         UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "org.qbopomofo.spaceCycleCount")
+        NotificationCenter.default.post(name: .qbopomofoPreferencesChanged, object: nil)
+    }
+
+    @objc private func autoLearnChanged(_ sender: NSButton) {
+        UserDefaults.standard.set(sender.state == .off, forKey: "org.qbopomofo.disableAutoLearn")
         NotificationCenter.default.post(name: .qbopomofoPreferencesChanged, object: nil)
     }
 

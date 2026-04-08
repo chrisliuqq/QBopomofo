@@ -50,6 +50,7 @@ echo "[3/6] Enriching word.csv with tsi.csv single-char frequencies..."
 ENRICHED_WORD="$OUTPUT_DIR/_enriched_word.csv"
 python3 -c "
 import csv, sys
+from collections import defaultdict
 
 # Read single-char frequencies from tsi.csv (pick max freq per char+zhuyin)
 freq = {}
@@ -79,6 +80,42 @@ with open('$DATA_DIR/word.csv') as fin, open('$ENRICHED_WORD', 'w', newline='') 
         writer.writerow(row)
 
 print(f'  Enriched {updated} single-char entries with tsi.csv frequencies')
+
+# Spread apart homophones with freq diff < 100 to ensure stable ordering
+# Read back enriched file, group by zhuyin, detect near-collisions
+rows = []
+with open('$ENRICHED_WORD') as f:
+    for row in csv.reader(f):
+        rows.append(row)
+
+# Group by zhuyin (index into rows list)
+by_zhuyin = defaultdict(list)
+for i, row in enumerate(rows):
+    if not row or row[0].startswith('#') or len(row) < 3:
+        continue
+    by_zhuyin[row[2]].append(i)
+
+spread = 0
+for zhuyin, indices in by_zhuyin.items():
+    if len(indices) < 2:
+        continue
+    # Sort by freq descending
+    indices.sort(key=lambda i: -int(rows[i][1]))
+    for j in range(1, len(indices)):
+        prev_freq = int(rows[indices[j-1]][1])
+        curr_freq = int(rows[indices[j]][1])
+        if prev_freq > 0 and curr_freq > 0 and prev_freq - curr_freq < 100:
+            new_freq = max(prev_freq - 100, 0)
+            rows[indices[j]][1] = str(new_freq)
+            spread += 1
+
+with open('$ENRICHED_WORD', 'w', newline='') as fout:
+    writer = csv.writer(fout)
+    for row in rows:
+        writer.writerow(row)
+
+if spread > 0:
+    print(f'  Spread apart {spread} near-collision homophones (gap < 100)')
 "
 
 # Build word.dat (single character dictionary)

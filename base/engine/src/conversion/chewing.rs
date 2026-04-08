@@ -44,6 +44,13 @@ impl ChewingEngine {
 
             // TODO: Reranking
             paths.sort_by(|a, b| b.cmp(a));
+            if log::log_enabled!(log::Level::Debug) && paths.len() >= 2 {
+                log::debug!(
+                    "path ranking: #1 {} (score={:.4}) #2 {} (score={:.4})",
+                    paths[0], paths[0].total_probability(),
+                    paths[1], paths[1].total_probability(),
+                );
+            }
             paths
         };
         paths
@@ -200,7 +207,27 @@ impl ChewingEngine {
             }
         }
 
-        trace!("best phraces for {:?} is {:?}", symbols, phrases);
+        if log::log_enabled!(log::Level::Debug) && !phrases.is_empty() {
+            let desc = |p: &PossiblePhrase| -> String {
+                match p {
+                    PossiblePhrase::Symbol(c) => format!("'{c}'(symbol)"),
+                    PossiblePhrase::Phrase(ph, _) => {
+                        format!("{}(freq={}, score={:.4})", ph.as_str(), ph.freq(), p.log_prob())
+                    }
+                }
+            };
+            if phrases.len() >= 2 {
+                log::debug!(
+                    "candidates for {:?}: #1 {} #2 {}",
+                    syllables, desc(&phrases[0]), desc(&phrases[1]),
+                );
+            } else {
+                log::debug!(
+                    "candidates for {:?}: #1 {}",
+                    syllables, desc(&phrases[0]),
+                );
+            }
+        }
         phrases
     }
     fn find_edges<D: Dictionary + ?Sized>(
