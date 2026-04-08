@@ -160,3 +160,55 @@ fn jiu_yi_zhi_bei_not_jiu_yi_zhi_bei_medical() -> Result<(), Box<dyn Error>> {
     );
     Ok(())
 }
+
+#[test]
+fn shi_qing_shi_not_qing_shi() -> Result<(), Box<dyn Error>> {
+    // ㄕˋ ㄑㄧㄥˊ ㄕˋ ㄅㄨˋ ㄋㄥˊ → should be 事情是不能, NOT 事情勢不能
+    // Standard keyboard layout:
+    //   g=ㄕ 4=ˋ → ㄕˋ (事)
+    //   f=ㄑ u=ㄧ ;=ㄤ 6=ˊ → ㄑㄧㄥˊ ... wait, ㄥ=/
+    //   f=ㄑ u=ㄧ /=ㄥ 6=ˊ → ㄑㄧㄥˊ (情)
+    //   g=ㄕ 4=ˋ → ㄕˋ (是)
+    //   1=ㄅ j=ㄨ 4=ˋ → ㄅㄨˋ (不)
+    //   s=ㄋ /=ㄥ 6=ˊ → ㄋㄥˊ (能)
+    let preedit = unsafe { type_keys_and_get_preedit("g4fu/6g41j4s/6")? };
+    eprintln!("preedit for 事情是不能: {}", preedit);
+    assert!(
+        preedit.contains("事情"),
+        "Should contain 事情, got: {}",
+        preedit
+    );
+    assert!(
+        !preedit.contains("情勢"),
+        "Should NOT contain 情勢, got: {}",
+        preedit
+    );
+    assert!(
+        preedit.contains("是"),
+        "Should contain 是, got: {}",
+        preedit
+    );
+    Ok(())
+}
+
+#[test]
+fn zhe_jian_not_zhe_jian_build() -> Result<(), Box<dyn Error>> {
+    // ㄓㄜˋ ㄐㄧㄢˋ ㄕˋ → should be 這件事, NOT 這建事
+    // Standard keyboard layout:
+    //   5=ㄓ k=ㄜ 4=ˋ → ㄓㄜˋ (這)
+    //   r=ㄐ u=ㄧ 0=ㄢ 4=ˋ → ㄐㄧㄢˋ (件)
+    //   g=ㄕ 4=ˋ → ㄕˋ (事)
+    let preedit = unsafe { type_keys_and_get_preedit("5k4ru04g4")? };
+    eprintln!("preedit for 這件事: {}", preedit);
+    assert!(
+        preedit.contains("這件"),
+        "Should contain 這件, got: {}",
+        preedit
+    );
+    assert!(
+        !preedit.contains("建"),
+        "Should NOT contain 建, got: {}",
+        preedit
+    );
+    Ok(())
+}

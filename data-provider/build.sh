@@ -52,7 +52,8 @@ python3 -c "
 import csv, sys
 from collections import defaultdict
 
-# Read single-char frequencies from tsi.csv (pick max freq per char+zhuyin)
+# Read single-char frequencies from merged tsi.csv (which includes custom phrases).
+# Custom phrases are appended last, so the last occurrence wins.
 freq = {}
 with open('$MERGED_TSI') as f:
     for row in csv.reader(f):
@@ -61,7 +62,7 @@ with open('$MERGED_TSI') as f:
         word, fr, zhuyin = row[0], row[1], row[2]
         if len(word) == 1:
             key = (word, zhuyin)
-            freq[key] = max(freq.get(key, 0), int(fr))
+            freq[key] = int(fr)  # last occurrence wins (custom overrides upstream)
 
 # Enrich word.csv: replace freq=0 with tsi freq if available
 updated = 0
