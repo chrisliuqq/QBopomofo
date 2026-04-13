@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     collections::VecDeque,
     error::Error,
     fmt::Debug,

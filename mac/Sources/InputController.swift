@@ -383,9 +383,14 @@ class QBopomofoInputController: IMKInputController {
         // Candidate mode — custom CandidatePanel handles all navigation
         if isCandMode {
             switch keyCode {
-            case 125: // Down — next candidate
-                candidatePanel.highlightNext()
-                dbg("cand ↓ → idx=\(candidatePanel.highlightedIndex)")
+            case 125: // Down — next candidate, or next page if at bottom
+                if !candidatePanel.highlightNext() {
+                    chewing_handle_Right(ctx)
+                    updateClientDisplay(ctx: ctx, session: session, client: client)
+                    dbg("cand ↓ → next page (page \(chewing_cand_CurrentPage(ctx)+1)/\(chewing_cand_TotalPage(ctx)))")
+                } else {
+                    dbg("cand ↓ → idx=\(candidatePanel.highlightedIndex)")
+                }
                 return true
             case 126: // Up — previous candidate
                 candidatePanel.highlightPrevious()
@@ -654,6 +659,12 @@ class QBopomofoInputController: IMKInputController {
         let chinese = getChewingBuffer(ctx)
         let bopomofo = getBopomofoReading(ctx)
         let hasMixed = qb_composing_has_mixed_content(session) != 0
+
+        // Resync Chinese snapshots after engine may have re-segmented the buffer
+        // (e.g. 是→事變). Without this, stale snapshots cause duplicated output.
+        if hasMixed {
+            chinese.withCString { c in qb_composing_resync_chinese(session, c) }
+        }
         let chewingCursor = Int(chewing_cursor_Current(ctx))
         dbg("display chinese='\(chinese)' bopo='\(bopomofo)' bufLen=\(chewing_buffer_Len(ctx)) cursor=\(chewingCursor) candPages=\(candTotal) candMode=\(inCandMode)")
 

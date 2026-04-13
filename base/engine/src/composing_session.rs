@@ -683,4 +683,58 @@ mod tests {
         assert_eq!(session.build_display("你好", "ㄅ"), "你好3ㄅ");
         assert_eq!(session.display_to_chewing_cursor(3, "你好", "ㄅ"), 2);
     }
+
+    /// Reproduces: when the chewing engine re-segments the buffer (e.g. 是→事變),
+    /// the Chinese snapshot becomes stale and causes duplicated output on commit.
+    /// Real case: "但我發現他現在是" + "alt" + engine changes to "但我發現他現在事變" + "c"
+    /// → commitAll produced "但我發現他現在是alt但我發現他現在事變c但我發現他現在事變"
+    /// Expected: "但我發現他現在事變altc" (or properly interleaved)
+    #[test]
+    fn commit_no_duplicate_after_chinese_resegmentation() {
+        let mut session = ComposingSession::new();
+
+        // Step 1: Chinese buffer = "甲乙丙", insert English "x" at end (pos 3)
+        assert!(session.insert_english_at('x', 3, "甲乙丙", ""));
+        // segments: [Chinese("甲乙丙"), English("x")]
+        assert_eq!(session.build_display("甲乙丙", ""), "甲乙丙x");
+
+        // Step 2: User types more zhuyin, engine re-segments: "甲乙丙" → "甲乙丁"
+        // (the engine changed 丙→丁 during re-evaluation — simulates 是→事)
+        // Then user types more zhuyin and buffer grows to "甲乙丁戊"
+
+        // Step 3: Insert English "y" at end of new display
+        // display should be: "甲乙丙x丁戊" (old snapshot + english + remaining)
+        // but remaining_chinese("甲乙丁戊") fails starts_with("甲乙丙") → returns full buffer
+        // This is where the bug manifests — the full buffer gets re-added as a new segment
+
+        // Simulate: resync should fix the stale snapshot
+        session.resync_chinese("甲乙丁戊");
+        assert_eq!(session.build_display("甲乙丁戊", ""), "甲乙丁x戊");
+
+        // Now commit should not duplicate
+        assert_eq!(session.commit_all("甲乙丁戊"), "甲乙丁x戊");
+    }
+
+    /// Same scenario but WITHOUT resync — demonstrates the bug
+    #[test]
+    fn commit_duplicates_without_resync_after_resegmentation() {
+        let mut session = ComposingSession::new();
+
+        // Chinese buffer = "甲乙丙", insert English "x" at end
+        assert!(session.insert_english_at('x', 3, "甲乙丙", ""));
+        assert_eq!(session.build_display("甲乙丙", ""), "甲乙丙x");
+
+        // Engine re-segments: buffer changes to "甲乙丁戊"
+        // WITHOUT calling resync_chinese, the snapshot is stale
+        // build_display should still work reasonably, but it doesn't:
+        let display = session.build_display("甲乙丁戊", "");
+        // BUG: this produces "甲乙丙x甲乙丁戊" because remaining_chinese
+        // can't match the stale snapshot prefix and returns the full buffer
+        assert_eq!(display, "甲乙丙x甲乙丁戊", "Known bug: stale snapshot causes full buffer duplication in display");
+
+        // And commit also duplicates:
+        let committed = session.commit_all("甲乙丁戊");
+        // BUG: "甲乙丙x甲乙丁戊" — Chinese text duplicated
+        assert_eq!(committed, "甲乙丙x甲乙丁戊", "Known bug: stale snapshot causes full buffer duplication in commit");
+    }
 }
